@@ -1,0 +1,65 @@
+# Production stack. Caddy terminates TLS for $DOMAIN and is the only thing
+# listening on the host; nothing else publishes a port.
+#   cp .env.example .env && $EDITOR .env
+#   cp config/config.prod.example.json config/config.prod.json && $EDITOR config/config.prod.json
+#   docker compose -f compose.prod.yml up -d --build
+name: rsschat
+
+services:
+  rsschat:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile
+    restart: unless-stopped
+    volumes:
+      - ./config/config.prod.json:/app/config.json:ro
+      - rsschat_data:/app/data
+    depends_on:
+      - mailpit
+    logging: &logging
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    environment:
+      DOMAIN: ${DOMAIN:?set DOMAIN in .env}
+      ACME_EMAIL: ${ACME_EMAIL:?set ACME_EMAIL in .env}
+      MAILPIT_USER: ${MAILPIT_USER:?set MAILPIT_USER in .env}
+      MAILPIT_PASSWORD_HASH: ${MAILPIT_PASSWORD_HASH:?run `docker run --rm caddy:2-alpine caddy hash-password --plaintext yourpassword` and put the result in .env}
+    volumes:
+      - ./caddy/Caddyfile.prod:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+      - caddy_logs:/var/log/caddy
+    depends_on:
+      - rsschat
+    logging: *logging
+
+  # Reached only through Caddy, at https://$DOMAIN/mailpit, behind basic auth.
+  mailpit:
+    image: axllent/mailpit:latest
+    restart: unless-stopped
+    environment:
+      MP_DATABASE: /data/mailpit.db
+      MP_WEBROOT: /mailpit
+      MP_MAX_MESSAGES: 5000
+      MP_SMTP_AUTH_ACCEPT_ANY: 1
+      MP_SMTP_AUTH_ALLOW_INSECURE: 1
+    volumes:
+      - mailpit_data:/data
+    logging: *logging
+
+volumes:
+  rsschat_data:
+  caddy_data:
+  caddy_config:
+  caddy_logs:
+  mailpit_data:

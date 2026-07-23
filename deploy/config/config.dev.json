@@ -1,0 +1,27 @@
+{
+	"note": "Localhost dev config for the docker stack. Every setting is explained in server/docs/config.md.",
+	"productName": "rssChat",
+	"productNameForDisplay": "rss.chat (dev)",
+	"urlServerHomePageSource": "https://code.scripting.com/rsschat/index.html",
+	"myDomain": "localhost",
+	"urlServerForClient": "http://localhost/",
+	"urlServerForEmail": "http://localhost/",
+	"flWebsocketEnabled": true,
+	"websocketPort": 1422,
+	"flSecureWebsocket": false,
+	"urlWebsocketServerForClient": "ws://localhost/",
+	"prefsPath": "data/prefs.json",
+	"dataPath": "data/",
+	"flFeedsInDatabase": true,
+	"smtpHost": "mailpit",
+	"smtpPort": 1025,
+	"smtpUsername": "dev",
+	"smtpPassword": "dev",
+	"mailSender": "hello@rsschat.localhost",
+	"confirmEmailSubject": "rss.chat dev confirmation",
+	"operationToConfirm": "sign in to your dev rss.chat",
+	"database": {
+		"flUseSqlite": true,
+		"databaseFilePath": "data/data.db"
+		}
+	}

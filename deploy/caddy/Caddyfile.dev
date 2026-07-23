@@ -1,0 +1,18 @@
+# Websocket upgrades go to the app's own websocket port, everything else to the
+# http port. Two listeners, one address -- the arrangement server/code/worknotes.md
+# describes for the production servers.
+
+:80 {
+	@websockets {
+		header Connection *Upgrade*
+		header Upgrade websocket
+	}
+
+	handle @websockets {
+		reverse_proxy rsschat:1422
+	}
+
+	handle {
+		reverse_proxy rsschat:1420
+	}
+}

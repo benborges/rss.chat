@@ -1,0 +1,32 @@
+{
+	email {$ACME_EMAIL}
+}
+
+{$DOMAIN} {
+	# Magic links land in mailpit, so this is as sensitive as an inbox --
+	# anyone who reaches it can sign in as anyone. Password required.
+	handle /mailpit* {
+		basic_auth {
+			{$MAILPIT_USER} {$MAILPIT_PASSWORD_HASH}
+		}
+		reverse_proxy mailpit:8025
+	}
+
+	@websockets {
+		header Connection *Upgrade*
+		header Upgrade websocket
+	}
+
+	handle @websockets {
+		reverse_proxy rsschat:1422
+	}
+
+	handle {
+		reverse_proxy rsschat:1420
+	}
+
+	encode gzip
+	log {
+		output file /var/log/caddy/access.log
+	}
+}

@@ -1,0 +1,52 @@
+# Localhost stack. Everything on http://localhost, mail caught by mailpit.
+#   docker compose -f compose.dev.yml up --build
+# Both published ports can be moved if something else already has them, e.g.
+# another project's mailpit:  MAILPIT_PORT=8026 docker compose -f compose.dev.yml up
+name: rsschat-dev
+
+services:
+  rsschat:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile
+    restart: unless-stopped
+    volumes:
+      - ./config/config.dev.json:/app/config.json:ro
+      # edit the server and restart the container -- no rebuild
+      - ../server/code/rssnetwork.js:/app/rssnetwork.js:ro
+      - rsschat_data:/app/data
+    depends_on:
+      - mailpit
+
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    ports:
+      - "${HTTP_PORT:-80}:80"
+    volumes:
+      - ./caddy/Caddyfile.dev:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - rsschat
+
+  # Sign-in is a magic link, so the server can't work without something to send
+  # mail to. Mailpit accepts anything and shows it at http://localhost:8025 --
+  # no SMTP provider, no domain verification, no account.
+  mailpit:
+    image: axllent/mailpit:latest
+    restart: unless-stopped
+    ports:
+      - "${MAILPIT_PORT:-8025}:8025"
+    environment:
+      MP_DATABASE: /data/mailpit.db
+      MP_SMTP_AUTH_ACCEPT_ANY: 1      # davemail always sends AUTH, with whatever config.json says
+      MP_SMTP_AUTH_ALLOW_INSECURE: 1  # ...and port 1025 isn't TLS
+    volumes:
+      - mailpit_data:/data
+
+volumes:
+  rsschat_data:
+  caddy_data:
+  caddy_config:
+  mailpit_data:
