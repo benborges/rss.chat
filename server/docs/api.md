@@ -4,6 +4,8 @@ This is the HTTP interface between the rss.chat client and its server. The clien
 
 The examples below use the flagship server at `https://rss.chat/`. If you run your own server, substitute its address.
 
+**Calling from JavaScript?** There's already a simpler way: [api.js](https://github.com/scripting/rss.chat/blob/main/client/code/api.js), the wrapper the shipped client uses. Every endpoint here is a one-line method on it, with the authentication and response handling done for you.
+
 ### How calls and responses work
 
 Every call is a plain HTTP request with query-string parameters. Reads are GET, writes are POST, but the server does not distinguish -- the parameters carry everything.
@@ -84,6 +86,10 @@ The server stamps the author, the publication date, and the feed it belongs to -
 **`/togglelike?id=N`** -- like a post, or take the like back if it's already there. One call, both directions. The response is the freshly-read item record, so the caller sees the new `ctLikes` and `flLiked` without a second call.
 
 **`/saveprefs?jsontext=X`** -- store the caller's preferences object on their user record. The prefs are the client's business -- the server stores what it's given and returns it in `/getuserdata`. The shipped client keeps its display name, feed metadata, and avatar URL here.
+
+**`/uploadmedia?type=T`** -- upload an image, or any media item. This is the one write whose payload rides in the request body: base64-encode the file's bytes and send them as the body of the POST, with the content type (e.g. `image/png`) in the `type` parameter. The decoded size must be within the server's limit -- the `maxMediaUploadBytes` config setting, 2MB by default. The response is an object with `url`, `id`, `type`, and `size`; `url` is the permanent address the item will be served from, and it's what the shipped client puts in the post's `img` tag.
+
+**`/media/N`** -- fetch a stored media item. The exception in this section: it's a plain unauthenticated GET, because it's the address readers' browsers hit when a post carries a picture. The bytes come back exactly as uploaded, with the content type given at upload; an id that doesn't exist answers 404. Media survives export and import along with everything else, so these addresses are as permanent as post permalinks.
 
 ### The item record
 
