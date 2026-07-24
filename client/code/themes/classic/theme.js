@@ -1,7 +1,7 @@
 function chatUserInterface (userOptions) { //5/2/26 by Claude + DW -- classic theme (3-col), renamed from twitter 7/2/26
 			console.log ("chatUserInterface (classic)");
 
-			const themesVersion = "0.5.338"; //bump on every theme edit -- #188: paste an image into the composer, it uploads, the picture appears at the cursor, 7/22/26 by CC
+			const themesVersion = "0.5.339"; //bump on every theme edit -- the first Return after pasting text containing a link now breaks the paragraph at the cursor, not at the link, 7/23/26 by CC
 
 			var options = {
 				whereToAppend: undefined,
@@ -2378,13 +2378,37 @@ function chatUserInterface (userOptions) { //5/2/26 by Claude + DW -- classic th
 					}
 
 				const editor = inputReplyComposer [0];
+
+				//7/23/26 by CC -- pasted inline fragments (text with a link, no paragraph wrapper) sit as bare children of the editor; wrapping each text node in its own paragraph stranded inline elements between blocks and evicted the caret, so the first Return after such a paste broke the text at the link instead of the cursor. Wrap each contiguous inline run in ONE paragraph, then put the caret back before the browser splits.
+				const theSelection = window.getSelection ();
+				var savedCaretNode, savedCaretOffset;
+				if ((theSelection !== null) && (theSelection.rangeCount > 0)) {
+					savedCaretNode = theSelection.anchorNode;
+					savedCaretOffset = theSelection.anchorOffset;
+					}
+				const inlineTags = {A: true, B: true, STRONG: true, I: true, EM: true, U: true, CODE: true, IMG: true, SPAN: true, BR: true};
+				var currentWrapper = null, flWrappedSomething = false;
 				Array.from (editor.childNodes).forEach (function (node) {
-					if (node.nodeType === 3 && node.textContent.length > 0) {
-						const wrapper = document.createElement ("p");
-						node.parentNode.insertBefore (wrapper, node);
-						wrapper.appendChild (node);
+					const flInline = (node.nodeType === 3) || ((node.nodeType === 1) && (inlineTags [node.tagName] === true));
+					if (flInline) {
+						if (currentWrapper === null) {
+							currentWrapper = document.createElement ("p");
+							editor.insertBefore (currentWrapper, node);
+							}
+						currentWrapper.appendChild (node);
+						flWrappedSomething = true;
+						}
+					else {
+						currentWrapper = null;
 						}
 					});
+				if (flWrappedSomething && (savedCaretNode !== undefined) && (savedCaretNode !== editor)) {
+					const newRange = document.createRange ();
+					newRange.setStart (savedCaretNode, savedCaretOffset);
+					newRange.collapse (true);
+					theSelection.removeAllRanges ();
+					theSelection.addRange (newRange);
+					}
 				});
 			function escapePastedText (theText) {
 				return theText.replace (/&/g, "&amp;").replace (/</g, "&lt;").replace (/>/g, "&gt;");
