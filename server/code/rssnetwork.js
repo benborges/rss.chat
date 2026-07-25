@@ -1,4 +1,4 @@
-var myVersion = "0.6.3", myProductName = "rss.network";
+var myVersion = "0.6.4", myProductName = "rss.network";
 
 const daveappserver = require ("daveappserver");
 const rss = require ("daverss");
@@ -53,7 +53,7 @@ var config = {
 	
 	urlExtrasOpml: "https://feedland.social/opml?screenname=davewiner&catname=davesources",
 	
-	robotsText: "User-agent: *\nDisallow: /getitembyguid\nDisallow: /getiteminfo\n", //7/1/26 by DW
+	robotsText: "User-agent: *\nDisallow: /getitembyguid\nDisallow: /getiteminfo\nDisallow: /getthread\n", //7/1/26 by DW; getthread added 7/24/26 by CC
 	
 	urlFavicon: "//s3.amazonaws.com/scripting.com/favicon.ico", //7/14/26 by DW
 	
@@ -765,6 +765,61 @@ var config = {
 					items.push (convertItem (row));
 					});
 				callback (undefined, items);
+				}
+			});
+		}
+	function getThread (screenname, idPost, callback) { //7/24/26 by CC
+		getItemAndReplies (screenname, idPost, function (err, items) {
+			if (err) {
+				callback (err);
+				}
+			else {
+				var theParent;
+				const theReplies = [];
+				items.forEach (function (itemRec) {
+					if (itemRec.id == idPost) { //the id param travels as a string, the database answers numbers -- the crossing is deliberate
+						theParent = itemRec;
+						}
+					else {
+						theReplies.push (itemRec);
+						}
+					});
+				if (theParent === undefined) {
+					const message = "Can't get the thread for post " + idPost + " because there is no post with that id, or it has been deleted.";
+					callback ({message});
+					}
+				else {
+					var ix = 0;
+					function addReply (theRec) {
+						if (theParent.replies === undefined) {
+							theParent.replies = [];
+							}
+						theParent.replies.push (theRec);
+						nextReply ();
+						}
+					function nextReply () {
+						if (ix >= theReplies.length) {
+							callback (undefined, theParent);
+							}
+						else {
+							const theReply = theReplies [ix++];
+							if (theReply.ctReplies > 0) {
+								getThread (screenname, theReply.id, function (err, subThread) {
+									if (err) {
+										addReply (theReply);
+										}
+									else {
+										addReply (subThread);
+										}
+									});
+								}
+							else {
+								addReply (theReply);
+								}
+							}
+						}
+					nextReply ();
+					}
 				}
 			});
 		}
@@ -2084,6 +2139,27 @@ function handleHttpRequest (theRequest) {
 				console.log ("/getitembyguid: theRequest.sysRequest.url == " + theRequest.sysRequest.url + ", theRequest.sysRequest.headers == " + utils.jsonStringify (theRequest.sysRequest.headers)); 
 				}
 			getItemByGuid (params.screenname, params.guid, httpReturn);
+			return (true);
+		case "/getthread": //7/24/26 by CC -- a post and its whole subtree of replies, one call
+			if (params.guid !== undefined) {
+				getItemByGuid (params.screenname, params.guid, function (err, itemRec) {
+					if (err) {
+						httpReturn (err);
+						}
+					else {
+						if (itemRec === undefined) {
+							const message = "Can't get the thread because there is no post with the guid \"" + params.guid + "\".";
+							httpReturn ({message});
+							}
+						else {
+							getThread (params.screenname, itemRec.id, httpReturn);
+							}
+						}
+					});
+				}
+			else {
+				getThread (params.screenname, params.id, httpReturn);
+				}
 			return (true);
 		case "/checkwhitelist": //6/9/26 by DW
 			checkWhitelist (params.emailaddress, httpReturn);

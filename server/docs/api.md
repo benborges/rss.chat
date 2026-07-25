@@ -4,7 +4,7 @@ This is the HTTP interface between the rss.chat client and its server. The clien
 
 The examples below use the flagship server at `https://rss.chat/`. If you run your own server, substitute its address.
 
-**Calling from JavaScript?** There's already a simpler way: [api.js](https://github.com/scripting/rss.chat/blob/main/client/code/api.js), the wrapper the shipped client uses. Every endpoint here is a one-line method on it, with the authentication and response handling done for you.
+**Calling from browser-based JavaScript?** There's already a simpler way: [api.js](https://github.com/scripting/rss.chat/blob/main/client/code/api.js), the wrapper the shipped client uses. Every endpoint here is a one-line method on it, with the authentication and response handling done for you. (Browser only -- from Node, call the HTTP interface below directly.)
 
 ### How calls and responses work
 
@@ -45,6 +45,8 @@ Try it: [https://rss.chat/getrecentuseritems?name=dave](https://rss.chat/getrece
 **`/getitembyguid?guid=X`** -- one post, looked up by its guid, which is its permalink -- e.g. `https://rss.chat/?id=204`. A deleted post answers with an error saying so, rather than pretending it never existed.
 
 **`/getitemandreplies?idparent=N`** -- a post and its direct replies, oldest first, as one flat array. The parent is the item whose `id` equals `idparent`; the replies are the items whose `inReplyToNum` points at it. This is the call the client makes to show a thread.
+
+**`/getthread?guid=X`** -- a post and its whole subtree of replies, in one call. You can pass `id=N` instead of `guid`. The response is the post's item record with one added member: `replies`, an array of item records in the same shape, each carrying its own `replies` -- the nesting is the threading. A post with no replies omits the member, like every other empty field. You get the post you ask about and everything under it, not the conversation above it -- ask about the root and you get the whole thread. Deleted posts are filtered out, and the reply counts (`ctReplies`) on each item match what's in its `replies` array. This does in one call what walking the `source:comments` feeds does in many -- same tree, either door. (New in server v0.6.4.)
 
 **`/getiteminfo?guid=X&format=rss`** -- the interop version of a single-post read, for apps that speak feed vocabulary rather than this API's. You can pass `id=N` instead of `guid`. Two formats: `rss` (the default) returns the item as it appears in the author's RSS feed, rendered as JSON -- including `source:comments` and `<source>` attribution; `feedland` returns the same item record the other read calls return. Any other format name gets an error naming the two real ones.
 
