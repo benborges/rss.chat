@@ -4,7 +4,7 @@ This is the HTTP interface between the rss.chat client and its server. The clien
 
 The examples below use the flagship server at `https://rss.chat/`. If you run your own server, substitute its address.
 
-**Calling from browser-based JavaScript?** There's already a simpler way: [api.js](https://github.com/scripting/rss.chat/blob/main/client/code/api.js), the wrapper the shipped client uses. Every endpoint here is a one-line method on it, with the authentication and response handling done for you. (Browser only -- from Node, call the HTTP interface below directly.)
+**Calling from browser-based JavaScript?** There's already a simpler way: [api.js](https://github.com/scripting/rss.chat/blob/main/client/code/api.js), the wrapper the shipped client uses. Every endpoint here is a one-line method on it, with the authentication and response handling done for you -- [here's the doc](../../client/docs/apijs.md), with a complete working page. (Browser only -- from Node, call the HTTP interface below directly.)
 
 ### How calls and responses work
 

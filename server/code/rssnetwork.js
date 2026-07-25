@@ -1,4 +1,4 @@
-var myVersion = "0.6.4", myProductName = "rss.network";
+var myVersion = "0.6.5", myProductName = "rss.network";
 
 const daveappserver = require ("daveappserver");
 const rss = require ("daverss");
@@ -60,6 +60,8 @@ var config = {
 	flFeedsInDatabase: false, //7/15/26 by DW
 	flRemoveBlanksAtEnd: true, //7/20/26 by DW
 	titleForSublist: undefined, //7/20/26 by DW
+	flNightlyBackup: false, //7/25/26 by CC -- #207
+	backupFolder: "data/backups/", //7/25/26 by CC -- #207
 	legalTags: { //7/23/26 by DW
 		allowedTags: ["p", "br", "a", "b", "i", "strong", "em", "img", "blockquote", "ul", "ol", "li", "h3"],
 		allowedAttributes: {
@@ -381,6 +383,24 @@ var config = {
 					}
 				nextTable ();
 				}
+			});
+		}
+	function backupDatabase (callback) { //7/25/26 by CC -- #207, the nightly backup; modeled on feedlanddatabase.js
+		const now = new Date ();
+		const datestring = now.getFullYear () + "-" + utils.padWithZeros (now.getMonth () + 1, 2) + "-" + utils.padWithZeros (now.getDate (), 2);
+		const f = config.backupFolder + datestring + ".json";
+		utils.sureFilePath (f, function () {
+			exportDatabase (f, function (err, jstruct) {
+				if (err) {
+					console.log ("backupDatabase: err.message == " + err.message);
+					}
+				else {
+					console.log ("backupDatabase: f == " + f);
+					}
+				if (callback !== undefined) {
+					callback (err);
+					}
+				});
 			});
 		}
 	function convertString (theString) {
@@ -885,6 +905,85 @@ var config = {
 					});
 				
 				backfillCommentsFeeds ();
+				}
+			});
+		}
+	function backfillMissingFeeds () { //7/25/26 by CC -- every user has a feed from the moment they exist, even with no posts
+		function feedExists (screenname, callback) { //callback (flExists)
+			const relpath = screenname + "/" + config.rssFilename;
+			if (config.flFeedsInDatabase) {
+				readDatabaseFile (utils.stringLower ("/users/" + relpath), function (err) {
+					if (err) {
+						callback (false);
+						}
+					else {
+						callback (true);
+						}
+					});
+				}
+			else {
+				s3.getObjectMetadata (config.rssS3Path + relpath, function (err) {
+					if (err) {
+						callback (false);
+						}
+					else {
+						callback (true);
+						}
+					});
+				}
+			}
+		function publishEmptyFeed (screenname, callback) {
+			getUserInfoByScreenname (screenname, function (err, userRec) {
+				if ((err) || (userRec === undefined)) {
+					console.log ("backfillMissingFeeds: can't read the user record for " + screenname + ".");
+					callback ();
+					}
+				else {
+					if (userRec.prefs === undefined) { //a user who has never saved prefs
+						userRec.prefs = new Object ();
+						}
+					buildFeedForUser (userRec, "xml", function (err, xmltext) {
+						if (err) {
+							console.log ("backfillMissingFeeds: screenname == " + screenname + ", err.message == " + err.message);
+							callback ();
+							}
+						else {
+							publishFeedFile (screenname + "/" + config.rssFilename, xmltext, function (err) {
+								if (err) {
+									console.log ("backfillMissingFeeds: screenname == " + screenname + ", err.message == " + err.message);
+									}
+								else {
+									console.log ("backfillMissingFeeds: published the feed for " + screenname);
+									}
+								callback ();
+								});
+							}
+						});
+					}
+				});
+			}
+		getAllScreennames (function (err, theNames) {
+			if (err) {
+				console.log ("backfillMissingFeeds: err.message == " + err.message);
+				}
+			else {
+				var ixName = 0;
+				function nextUser () {
+					if (ixName < theNames.length) {
+						const screenname = theNames [ixName++];
+						feedExists (screenname, function (flExists) {
+							if (flExists) {
+								nextUser ();
+								}
+							else {
+								publishEmptyFeed (screenname, function () {
+									nextUser ();
+									});
+								}
+							});
+						}
+					}
+				nextUser ();
 				}
 			});
 		}
@@ -2021,6 +2120,18 @@ var config = {
 							}
 						else {
 							callback (undefined, emailSecret);
+							getUserInfoByScreenname (screenname, function (err, userRec) { //7/25/26 by CC -- the feed exists from the moment the user does
+								if ((err) || (userRec === undefined)) {
+									console.log ("addEmailToUserInDatabase: can't read the user record for " + screenname + ", so the feed wasn't published.");
+									}
+								else {
+									if (userRec.prefs === undefined) { //a brand-new user has never saved prefs
+										userRec.prefs = new Object ();
+										}
+									updateFeedsOnS3 (userRec, function (err) {
+										});
+									}
+								});
 							}
 						});
 					}
@@ -2245,7 +2356,18 @@ function handleHttpRequest (theRequest) {
 
 function startup () {
 	console.log ("startup");
+	var whenLastDayRollover = new Date (); //7/25/26 by CC -- #207
+	function everyNight () { //7/25/26 by CC -- #207, modeled on feedlandserver
+		if (config.flNightlyBackup) {
+			backupDatabase ();
+			}
+		}
 	function everySecond () {
+		const now = new Date ();
+		if (!utils.sameDay (now, whenLastDayRollover)) { //7/25/26 by CC -- #207
+			whenLastDayRollover = now;
+			everyNight ();
+			}
 		}
 	function everyMinute () {
 		}
@@ -2272,6 +2394,7 @@ function startup () {
 						config [x] = appConfig [x];
 						}
 					updateSubscriptionListOnS3 (); //6/24/26 by DW
+					backfillMissingFeeds (); //7/25/26 by CC -- publish feeds for users who don't have one yet
 					utils.runEveryMinute (everyMinute);
 					setInterval (everySecond, 1000); 
 					getMysqlVersion (function (err, mysqlVersion) { //11/18/23 by DW, 2/1/24; 11:22:16 AM by DW
