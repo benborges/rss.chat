@@ -537,7 +537,9 @@
 	function simpleInits () { //7/13/26 by DW -- startup things that don't need to be waited for
 		startTurndown (); //7/22/26 by DW
 		$(".divMenuProductName").text (settingsFromServer.productNameForDisplay); //7/13/26 by DW
-		hitCounter (); 
+		if (endsWith (getDomainFromUrl (settingsFromServer.urlServer), "rss.chat")) { //7/25/26 by DW
+			hitCounter (); 
+			}
 		}
 	function everySecond () {
 		if (flPrefsChanged) { //5/16/26 by DW

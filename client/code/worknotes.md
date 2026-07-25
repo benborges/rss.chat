@@ -1,3 +1,11 @@
+#### 7/25/26; 11:39 AM ET by CC
+
+**The Docs menu now reaches everything.** Two new submenus under Docs: Blog posts, with the Scripting News pieces that tell the rss.chat story -- what it's for, how the ecosystem fits together, today's post about the API -- and Github Repo, with the places a user or developer would want in the repo: the repo home, how to run your own server, the API docs, the example apps, the questions-and-answers thread, and both worknotes pages. Everything about rss.chat is now one click from inside rss.chat. By DW.
+
+#### 7/25/26; 10:56 AM ET by CC
+
+**The hit counter now counts only rss.chat.** When the app starts up it registers a hit, so there's a running count of how much rss.chat is used. But everyone running their own server uses this same client -- and their visitors were being counted too, hits arriving from servers that aren't ours. Now the client checks which server it's serving and only counts when it's on an rss.chat domain. If you run your own install, your traffic is yours alone. Fixed by DW. (Client v0.6.12.)
+
 #### 7/23/26; 7:30 PM ET by CC
 
 **The Return key stopped breaking paragraphs at the wrong spot.** A bug DW reported earlier but couldn't reproduce finally showed itself: paste a chunk of text that includes a link, put the cursor somewhere later in the text, press Return -- and the break landed at the link instead of the cursor, tearing the link out onto its own line. The trick to reproducing it: it only ever happened on the *first* Return after that kind of paste, never again in the same post -- which is exactly what made it so slippery. Now the break lands where the cursor is, and links stay in their sentences. (Theme v0.5.339.)
