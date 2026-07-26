@@ -1129,8 +1129,23 @@ function chatUserInterface (userOptions) { //5/2/26 by Claude + DW -- classic th
 				populateAvatar (divAvatar, item.imageUrl || appConsts.urlDefaultImage, author.charAt (0).toUpperCase ());
 				const divTweetBody = $('<div class="divTweetBody"></div>');
 
-				if (item.inReplyToAuthor !== undefined) { //show the reply context the source server computed, without local threading
-					divTweetBody.append ($('<div class="divReplyingTo"></div>').text ("Replying to @" + item.inReplyToAuthor));
+				if ((item.inReplyToAuthor !== undefined) || (item.inReplyToUrl !== undefined)) { //7/26/26 by CC -- federation: a federated post may itself reply to another post up the thread; show that context and, in the story view, let the reader climb one more step across the boundary
+					const parentInstance = (item.inReplyToUrl !== undefined) ? getDomainFromUrl (item.inReplyToUrl) : undefined;
+					const replyingToText = (item.inReplyToAuthor !== undefined) ? ("Replying to @" + item.inReplyToAuthor + ((parentInstance !== undefined) ? (" on " + parentInstance) : "")) : ("Replying to a post on " + parentInstance);
+					const divReplyingTo = $('<div class="divReplyingTo"></div>').text (replyingToText);
+					if (item.inReplyToUrl !== undefined) {
+						divReplyingTo.on ("click", function (theEvent) {
+							theEvent.preventDefault ();
+							theEvent.stopPropagation ();
+							if (divChat.hasClass ("storyPage") === true) { //story view: climb one more step up the thread, following the url to the next instance
+								popUpOrSelectParent (item);
+								}
+							else { //timeline: open the replied-to post on its own instance
+								window.open (item.inReplyToUrl);
+								}
+							});
+						}
+					divTweetBody.append (divReplyingTo);
 					}
 
 				const divTweetHeader = $('<div class="divTweetHeader"></div>');
