@@ -177,6 +177,21 @@ Optional. An array of email addresses allowed to sign in. Leave it out and anyon
 	]
 ```
 
+### federatedServers
+
+Optional. An array of other rss.chat instances whose public timelines your client also reads. Leave it out (the default) and your server behaves exactly as a stock one -- it makes no outside calls and shows only its own posts.
+
+When it's set, your server fetches each listed instance's recent posts, runs them through the same sanitizer it applies to local posts, and serves them to your client alongside your own, newest-first. Federated posts appear as read-only cards labelled with the instance they came from; signed-in users can reply to them, and a reply is an ordinary post on your server that points back at the remote one by its permalink. The other instances don't have to do anything -- this reads their public feeds; whom you federate with is your choice alone.
+
+```json
+"federatedServers": [
+	"https://demo.rss.chat/",
+	"https://another.example.com/"
+	]
+```
+
+Each entry is an instance's base URL, ending with a slash. An instance that's unreachable is skipped, never fatal.
+
 ### note
 
 A free-text comment for whoever reads the file. Not used by the app. The convention is to say which install this is and where it runs.
