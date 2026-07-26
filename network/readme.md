@@ -1,4 +1,4 @@
-# What is the RSS network?
+# What is the RSS.chat network?
 
 rss.chat isn't really a product. It's an application built on something bigger: a network of feeds, lists, formats and protocols, all open, that anyone can plug into without asking permission. The app is one way to use the network. This page is a map of the rest of it.
 
@@ -8,7 +8,7 @@ Here are the pieces.
 
 ### Every user is a feed
 
-From the moment an account is created, it has an RSS 2.0 feed at a predictable address. Dave's is [https://rss.chat/users/dave/rss.xml](https://rss.chat/users/dave/rss.xml) -- every user's feed is at `users/<screenname>/rss.xml`. Every post is an item in the author's feed. That means anything that reads RSS -- a feed reader, a script, another server -- is already a client of the RSS network, with nothing to install and no key to request.
+From the moment an account is created, it has an RSS 2.0 feed at a predictable address. Dave's is [https://rss.chat/users/dave/rss.xml](https://rss.chat/users/dave/rss.xml) -- every user's feed is at `users/<screenname>/rss.xml`. Every post is an item in the author's feed. That means anything that reads RSS -- a feed reader, a script, another server -- is already a client of the RSS.chat network, with nothing to install and no key to request.
 
 ### The everyone feed
 
