@@ -781,6 +781,31 @@ var config = {
 				});
 			});
 		}
+	function getRemoteItem (guid, callback) { //7/26/26 by CC -- federation: follow a source:inReplyTo url to the post it points at on another instance, threadwalker-style. Fetch it by its permalink, sanitize it with our own sanitizer, tag it with its origin, and return it. Returns undefined when the guid isn't a url or the instance can't be reached -- the caller shows what it can.
+		if ((guid === undefined) || !utils.beginsWith (guid, "http")) {
+			callback (undefined, undefined);
+			return;
+			}
+		const ixSlash = guid.indexOf ("/", guid.indexOf ("://") + 3);
+		const baseUrl = (ixSlash > 0) ? guid.substring (0, ixSlash + 1) : guid;
+		request (baseUrl + "getitembyguid?guid=" + encodeURIComponent (guid), function (err, response, body) {
+			if (!err && (response !== undefined) && (response.statusCode === 200)) {
+				try {
+					const item = JSON.parse (body);
+					if ((item !== undefined) && (item.guid !== undefined)) {
+						item.description = sanitizeHtmltext (item.description);
+						item.federated = baseUrl; //the client renders this as a read-only card from another instance
+						callback (undefined, item);
+						return;
+						}
+					}
+				catch (parseErr) {
+					console.log ("getRemoteItem: " + guid + " parse err == " + parseErr.message);
+					}
+				}
+			callback (undefined, undefined);
+			});
+		}
 	function getItemById (screenname, id, callback) { //6/4/26 by Claude
 		const sqltext = "select items.*, (select count(*) from likes where likes.itemId = items.id) as ctLikes, (select count(*) from likes where likes.itemId = items.id and likes.screenname = " + davesql.encode (screenname) + ") as flLiked, (select count(*) from items c where c.inReplyTo = items.id and (c.flDeleted is null or c.flDeleted = 0)) as ctReplies, (select coalesce (nullif (u2.prefs ->> '$.myFeedTitle', ''), i2.author) from items i2 left join users u2 on u2.screenname = i2.author where i2.id = items.inReplyTo) as inReplyToAuthor from items where id = " + davesql.encode (id) + ";";
 		davesql.runSqltext (sqltext, function (err, result) {
@@ -2323,6 +2348,9 @@ function handleHttpRequest (theRequest) {
 			return (true);
 		case "/getfederatedtimeline": //7/26/26 by CC -- federation: posts from the instances this operator federates with, sanitized and tagged with their origin; empty when none configured
 			getFederatedTimeline (params.ct, httpReturn);
+			return (true);
+		case "/getremoteitem": //7/26/26 by CC -- federation: resolve one post on another instance by its permalink (the client follows a cross-instance source:inReplyTo up the thread)
+			getRemoteItem (params.guid, httpReturn);
 			return (true);
 		case "/saveprefs": //5/16/26 by DW 
 			savePrefs (params.emailaddress, params.emailcode, params.jsontext, httpReturn);

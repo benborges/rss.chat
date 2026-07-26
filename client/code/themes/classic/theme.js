@@ -1016,7 +1016,10 @@ function chatUserInterface (userOptions) { //5/2/26 by Claude + DW -- classic th
 			function popUpOrSelectParent (childItem) { //6/30/26 by CC -- #121: in the story view, climb one step up the thread. If the post this one replies to is already on screen (down the trail), just move the cursor up to it. Otherwise fetch that parent, insert it above as the new top, nest the current view under it (indented), and put the cursor on it -- so you walk toward the root one step at a time, leaving the trail behind you. Home resets.
 				const parentId = childItem.inReplyTo;
 				if (parentId === undefined) {
-					return; //nothing above -- this post is the root of the thread
+					if (childItem.inReplyToUrl !== undefined) { //7/26/26 by CC -- federation: the parent is a post on another instance; climb to it by following its url
+						popUpRemoteParent (childItem);
+						}
+					return; //nothing above on this instance -- this post is the root of the thread here
 					}
 				var divExistingParent; //the parent's thread, if it's already rendered somewhere in the story
 				divStory.find (".divThread").toArray ().forEach (function (theElement) {
@@ -1050,6 +1053,32 @@ function chatUserInterface (userOptions) { //5/2/26 by Claude + DW -- classic th
 							}
 						});
 					}
+				}
+			function popUpRemoteParent (childItem) { //7/26/26 by CC -- federation: climb one step to the post on another instance that childItem replies to. Our server follows the url, fetches and sanitizes it; we render it above as a federated card and nest the trail under it -- the same one-step-at-a-time walk as popUpOrSelectParent, across the instance boundary.
+				const parentUrl = childItem.inReplyToUrl;
+				var divExistingParent;
+				divStory.find (".divThread").toArray ().forEach (function (theElement) {
+					const theThreadItem = $(theElement).data ("item");
+					if ((theThreadItem !== undefined) && (theThreadItem.guid === parentUrl)) {
+						divExistingParent = $(theElement);
+						}
+					});
+				if (divExistingParent !== undefined) {
+					selectThread (divExistingParent, true); //already on the trail -- just move the cursor up to it
+					return;
+					}
+				const currentTopThreads = divStory.children (".divThread"); //the trail so far -- becomes the parent's nested replies
+				globals.myRssNetwork.getRemoteItem (parentUrl, function (err, parentItem) {
+					if (err || (parentItem === undefined) || (parentItem.guid === undefined)) {
+						console.log ("popUpRemoteParent: couldn't resolve " + parentUrl);
+						return;
+						}
+					addItemToTimeline (parentItem, divStory); //parentItem.federated is set -- renders as a federated card into the story area
+					const divParentThread = divStory.children (".divThread").last ();
+					divStory.prepend (divParentThread); //move it to the top
+					divParentThread.children (".divReplies").append (currentTopThreads); //nest the old view under it, indented
+					selectThread (divParentThread, true); //cursor on the newly-added post -- the next step toward the summit
+					});
 				}
 			var itemSeenObserver; //assigned on first use by watchItemSeen
 			function watchItemSeen (divThread, item) { //7/2/26 by CC -- #129: read means it was on your screen; tell the app when a post has actually been visible. Half the post on screen counts; a post taller than the window counts when it fills half the window
@@ -1090,7 +1119,7 @@ function chatUserInterface (userOptions) { //5/2/26 by Claude + DW -- classic th
 					}
 				}
 
-			function addFederatedCard (item) { //7/26/26 by CC -- federation: a post from another instance. It lives on item.federated's server, so likes and edits belong there and the card links out for them. You can reply, though: a reply is an ordinary post on your own instance that points back at this one by its permalink. Its html was sanitized by our own server (getFederatedTimeline) before it reached us, so it's as safe to render as a local post.
+			function addFederatedCard (item, targetContainer) { //7/26/26 by CC -- federation: a post from another instance. It lives on item.federated's server, so likes and edits belong there and the card links out for them. You can reply, though: a reply is an ordinary post on your own instance that points back at this one by its permalink. Its html was sanitized by our own server (getFederatedTimeline) before it reached us, so it's as safe to render as a local post.
 				const theDate = new Date (item.pubDate);
 				const author = item.author || "?";
 				const divThread = $('<div class="divThread federatedCard"></div>');
@@ -1143,14 +1172,19 @@ function chatUserInterface (userOptions) { //5/2/26 by Claude + DW -- classic th
 				divThread.append (divTweet);
 				const divReplies = $('<div class="divReplies"></div>'); //7/26/26 by CC -- federation: cross-instance replies to this post (made from our instance) nest here
 				divThread.append (divReplies);
-				divTimeline.prepend (divThread);
+				if (targetContainer !== undefined) { //7/26/26 by CC -- federation: climbing in the story view renders the fetched parent into the story area, not the timeline
+					targetContainer.append (divThread);
+					}
+				else {
+					divTimeline.prepend (divThread);
+					}
 				if (item.guid !== undefined) {
 					federatedByGuid [item.guid] = {divThread, divReplies, author};
 					}
 				}
 			function addItemToTimeline (item, targetContainer) { //6/20/26 by Claude -- targetContainer set means render this one post into its own area (the story page) instead of the timeline
 				if (item.federated !== undefined) { //7/26/26 by CC -- federation: a post from another instance; render a read-only card and stop, never touching the local item maps or interactive wiring below
-					addFederatedCard (item);
+					addFederatedCard (item, targetContainer);
 					return;
 					}
 				if (item.inReplyTo === undefined && item.inReplyToNum !== undefined) { //6/25/26 by CC -- the server names the parent's id inReplyToNum; thread on it so replies nest on reload, not just on the live socket path
@@ -1169,7 +1203,7 @@ function chatUserInterface (userOptions) { //5/2/26 by Claude + DW -- classic th
 				wireAvatarClick (divAvatar, item.screenname);
 				const divTweetBody = $('<div class="divTweetBody"></div>');
 
-				var replyingToText, parentRemoteUrl; //6/30/26 by CC #121; parentRemoteUrl is set when the replied-to post lives on another instance -- federation
+				var replyingToText, parentRemoteUrl, flResolveRemoteAuthor = false; //6/30/26 by CC #121; parentRemoteUrl is set when the replied-to post lives on another instance -- 7/26/26 by CC federation
 				if (parentEntry !== undefined) { //parent is loaded -- use its display name, matching the existing timeline behavior
 					replyingToText = "Replying to @" + (parentEntry.item.author || "?");
 				}
@@ -1177,18 +1211,36 @@ function chatUserInterface (userOptions) { //5/2/26 by Claude + DW -- classic th
 					parentRemoteUrl = item.inReplyToUrl;
 					const fed = federatedByGuid [parentRemoteUrl];
 					const instance = getDomainFromUrl (parentRemoteUrl);
-					replyingToText = (fed !== undefined) ? ("Replying to @" + fed.author + " on " + instance) : ("Replying to a post on " + instance);
+					if (fed !== undefined) {
+						replyingToText = "Replying to @" + fed.author + " on " + instance;
+					}
+					else { //the parent card isn't on screen; name the instance now, then follow the url to fill in the author
+						replyingToText = "Replying to a post on " + instance;
+						flResolveRemoteAuthor = true;
+					}
 				}
 				else if (item.inReplyToAuthor !== undefined) { //parent isn't on screen -- use the name the server computed
 					replyingToText = "Replying to @" + item.inReplyToAuthor;
 				}
 				if (replyingToText !== undefined) {
 					const divReplyingTo = $('<div class="divReplyingTo"></div>').text (replyingToText);
-					if (parentRemoteUrl !== undefined) { //7/26/26 by CC -- federation: the parent lives on another instance; the line opens it there
+					if (parentRemoteUrl !== undefined) { //7/26/26 by CC -- federation: the parent lives on another instance
+						if (flResolveRemoteAuthor) { //follow the url to name the author, threadwalker-style, and fill the line in when it comes back
+							globals.myRssNetwork.getRemoteItem (parentRemoteUrl, function (err, parentItem) {
+								if ((parentItem !== undefined) && (parentItem.author !== undefined)) {
+									divReplyingTo.text ("Replying to @" + parentItem.author + " on " + getDomainFromUrl (parentRemoteUrl));
+								}
+							});
+						}
 						divReplyingTo.on ("click", function (theEvent) {
 							theEvent.preventDefault ();
 							theEvent.stopPropagation ();
-							window.open (parentRemoteUrl);
+							if (divChat.hasClass ("storyPage") === true) { //story view: climb across the boundary to the parent
+								popUpOrSelectParent (item);
+							}
+							else { //timeline: open this reply as a story, where the climb to the remote parent lives
+								openStoryInPlace (location.origin + "?id=" + item.id);
+							}
 						});
 					}
 					else if (item.inReplyTo !== undefined) { //6/30/26 by CC #121: click the line to reach the post this one replies to -- the message above it

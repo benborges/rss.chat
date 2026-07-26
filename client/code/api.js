@@ -190,6 +190,9 @@ function rssNetworkServer (userOptions) {
 	function getFederatedTimeline (callback) { //7/26/26 by CC -- federation: posts from the instances this server federates with, already sanitized and tagged with their origin by the server; empty array when none configured. ct defaults to the server's maxRecentItems.
 		servercall ("getfederatedtimeline", undefined, false, "GET", callback);
 		}
+	function getRemoteItem (guid, callback) { //7/26/26 by CC -- federation: resolve a post on another instance by its permalink, via our own server (which follows the url, fetches and sanitizes it). data is undefined if it can't be reached.
+		servercall ("getremoteitem", {guid}, false, "GET", callback);
+		}
 	function savePrefs (thePrefs, callback) { //5/16/26 by DW
 		if (userIsSignedIn ()) {
 			const params = {
@@ -322,6 +325,7 @@ function rssNetworkServer (userOptions) {
 	this.getSubscriptionList = getSubscriptionList; 
 	this.getRecentItems = getRecentItems; //4/29/26 by DW
 	this.getFederatedTimeline = getFederatedTimeline; //7/26/26 by CC -- federation
+	this.getRemoteItem = getRemoteItem; //7/26/26 by CC -- federation
 	this.savePrefs = savePrefs; //5/16/26 by DW
 	this.willRedirect = willRedirect; //5/17/26 by DW
 	this.updatePost = updatePost; //5/21/26 by DW
@@ -451,6 +455,16 @@ function testGetFederatedTimeline () { //7/26/26 by CC -- federation
 			}
 		else {
 			console.log ("testGetFederatedTimeline: theItems == \n" + jsonStringify (theItems));
+			}
+		});
+	}
+function testGetRemoteItem (guid = "https://rss.chat/?id=410") { //7/26/26 by CC -- federation
+	globals.myRssNetwork.getRemoteItem (guid, function (err, theItem) {
+		if (err) {
+			console.log ("testGetRemoteItem: err.message == " + err.message);
+			}
+		else {
+			console.log ("testGetRemoteItem: theItem == \n" + jsonStringify (theItem));
 			}
 		});
 	}
