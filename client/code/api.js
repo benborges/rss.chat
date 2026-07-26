@@ -444,6 +444,16 @@ function testGetRecentItems () {
 			}
 		});
 	}
+function testGetFederatedTimeline () { //federation
+	globals.myRssNetwork.getFederatedTimeline (function (err, theItems) {
+		if (err) {
+			console.log ("testGetFederatedTimeline: err.message == " + err.message);
+			}
+		else {
+			console.log ("testGetFederatedTimeline: theItems == \n" + jsonStringify (theItems));
+			}
+		});
+	}
 function testSaveprefs () {
 	appPrefs.slogan = getRandomSnarkySlogan ();
 	globals.myRssNetwork.savePrefs (appPrefs, function (err) {
