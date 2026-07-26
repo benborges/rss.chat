@@ -66,6 +66,7 @@ function chatUserInterface (userOptions) { //5/2/26 by Claude + DW -- classic th
 
 			const itemsById = {};
 			const itemsByGuid = {}; //look up displayed item by guid for updateItem
+			const federatedByGuid = {}; //federation -- a displayed federated card by its (remote) guid, so a local reply pointing at that guid can nest under it
 			var savedTimelineScroll = 0; //6/20/26 by Claude -- where the timeline was scrolled when we left it for a story, restored on the way back
 			var hoistStack = new Array (); //6/27/26 by CC -- #104 hoist/dehoist (MORE/Drummer lineage): ids of the posts hoisted into, outermost first; the last is the current temporary root. Empty == not hoisted, normal timeline showing
 			var hoistScrollStack = new Array (); //6/27/26 by CC -- #104: parallel to hoistStack -- the window scroll position of the view you left when you hoisted, restored when you dehoist back to it
@@ -1130,7 +1131,12 @@ function chatUserInterface (userOptions) { //5/2/26 by Claude + DW -- classic th
 				divTweet.append (divAvatar);
 				divTweet.append (divTweetBody);
 				divThread.append (divTweet);
+				const divReplies = $('<div class="divReplies"></div>'); //federation -- cross-instance replies to this post (made from our instance) nest here
+				divThread.append (divReplies);
 				divTimeline.prepend (divThread);
+				if (item.guid !== undefined) {
+					federatedByGuid [item.guid] = {divThread, divReplies};
+					}
 				}
 			function addItemToTimeline (item, targetContainer) { //6/20/26 by Claude -- targetContainer set means render this one post into its own area (the story page) instead of the timeline
 				if (item.federated !== undefined) { //federation -- a post from another instance; render a read-only card and stop, never touching the local item maps or interactive wiring below
@@ -1641,8 +1647,14 @@ function chatUserInterface (userOptions) { //5/2/26 by Claude + DW -- classic th
 						return (new Date (a.pubDate) - new Date (b.pubDate));
 						});
 					allItems.forEach (function (item) {
-						addItemToTimeline (item);
-						});
+						const federatedParent = ((item.federated === undefined) && (item.inReplyToUrl !== undefined)) ? federatedByGuid [item.inReplyToUrl] : undefined; //federation -- a local reply whose parent is a federated card already on screen; sorted oldest-first, so the card is registered before its reply
+						if (federatedParent !== undefined) {
+							addItemToTimeline (item, federatedParent.divReplies); //nest it under the federated post it answers
+						}
+						else {
+							addItemToTimeline (item);
+						}
+					});
 					flTimelineLoaded = true; //6/29/26 by CC -- #118: timeline is populated; Home and Back can reveal it
 					selectNewestItem (); //7/3/26 by CC -- #133: the cursor always starts on the top post
 					restorePendingContextDraft (); //6/21/26 by CC -- items are in; reopen a reply/edit draft against its target post
