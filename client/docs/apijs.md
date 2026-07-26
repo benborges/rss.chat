@@ -9,7 +9,7 @@ It's for browser-based JavaScript only. From Node, call the HTTP interface direc
 This is a whole working web page. Save it as an .html file, open it in a browser, and it writes dave's recent posts to the console.
 
 ```html
-<script src="https://s3.amazonaws.com/scripting.com/code/includes/basic/code.js"></script>
+<script src="https://code.scripting.com/includes/basic/code.js"></script>
 <script src="https://code.scripting.com/rsschat/api.js"></script>
 <script>
 	const myServer = new rssNetworkServer ({serverAddress: "https://rss.chat/"});
