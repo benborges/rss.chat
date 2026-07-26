@@ -22,9 +22,23 @@ One OPML file listing every user's feed: [https://rss.chat/data/subs.opml](https
 
 Our feeds carry a few elements beyond core RSS, from the [source namespace](https://source.scripting.com/). The important one is `source:comments` -- it's how a post points to the feed of its replies, which is how conversations thread across the open web. There's also `source:account`, which says who published the feed and where to find them. The namespace is documented so other feeds can carry the same elements, and other readers can understand them.
 
+### Textcasting
+
+[Textcasting](http://textcasting.org/) is the spec for the posts themselves -- the features writers need, applied to social media the way podcasting applied enclosures to feeds. Six things: titles are optional, links work, simple styling (bold and italic), enclosures, unlimited length, and posts are editable. Every one of them is supported here, because our users are writers. When two apps both support the textcasting features, a post can move between them without losing anything the writer put into it.
+
+### Markdown
+
+Writers know markdown -- it's the closest thing writing on the web has to a lingua franca. And they trust it, because plain text has nowhere to hide anything. Writers don't like apps that add things to their writing, and markdown makes that visible: if HTML shows up in your text, you know something's been in there.
+
+So the editor takes markdown, and it doesn't stop at the edit box: when a post is written in markdown, the feed carries the writer's original markdown in `source:markdown` alongside the rendered HTML in `description`. A consuming app gets both -- the finished output for display, and the source for editing or re-rendering. The writing survives the trip.
+
 ### The firehose
 
 The server broadcasts over a websocket as posts arrive and change -- every new post, every edit, as it happens. It's how the rss.chat client keeps timelines current without polling, and any app can listen the same way. Documented in [the firehose doc](../server/docs/firehose.md), with working demo apps in [examples/firehose](../examples/firehose/).
+
+### rssCloud
+
+The firehose covers apps watching this server; [rssCloud](http://rsscloud.co/) is realtime for the feeds themselves, across servers, and it's been an open protocol since 2001. Every feed here carries a `<cloud>` element naming a notification server, and when a feed updates, the server pings it. Any subscriber anywhere that registered with the cloud gets notified within seconds -- it's why a post published on rss.chat shows up in FeedLand moments later, no polling involved.
 
 ### The API
 
