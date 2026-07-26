@@ -254,7 +254,7 @@ var config = {
 		const theStatements = [
 			"create table if not exists users (screenname text not null collate nocase, emailAddress text collate nocase, emailSecret text, prefs text, ctHits integer not null default 0, ctHitsToday integer not null default 0, whenLastHit text, whenCreated text default current_timestamp, whenUpdated text default current_timestamp, primary key (screenname));",
 			"create index if not exists emailAddress on users (emailAddress);",
-			"create table if not exists items (id integer primary key, feedUrl text, author text collate nocase, inReplyTo integer, title text, link text, description text, pubDate text, enclosureUrl text, enclosureType text, enclosureLength integer, whenCreated text default current_timestamp, whenUpdated text default current_timestamp, markdowntext text, outlineJsontext text, flDeleted integer not null default 0);",
+			"create table if not exists items (id integer primary key, feedUrl text, author text collate nocase, inReplyTo integer, inReplyToGuid text, title text, link text, description text, pubDate text, enclosureUrl text, enclosureType text, enclosureLength integer, whenCreated text default current_timestamp, whenUpdated text default current_timestamp, markdowntext text, outlineJsontext text, flDeleted integer not null default 0);", //inReplyToGuid -- federation: the permalink of a post on another instance this one replies to; null for ordinary local replies (which use the integer inReplyTo)
 			"create index if not exists feedUrl on items (feedUrl);",
 			"create index if not exists author on items (author);",
 			"create table if not exists likes (screenname text collate nocase, itemId integer, whenCreated text default current_timestamp, primary key (screenname, itemId));",
@@ -279,6 +279,28 @@ var config = {
 				}
 			}
 		nextStatement ();
+		}
+	function migrateSchema (callback) { //federation -- add columns a fresh database already has (they're in the create above) to a database that predates them. SQLite has no "add column if not exists", so we check first and only alter when it's missing; a current database passes straight through.
+		davesql.runSqltext ("pragma table_info (items);", function (err, result) {
+			if (err || (result === undefined)) {
+				callback ();
+				return;
+				}
+			const flHasColumn = result.some (function (col) {
+				return (col.name === "inReplyToGuid");
+				});
+			if (flHasColumn) {
+				callback ();
+				}
+			else {
+				davesql.runSqltext ("alter table items add column inReplyToGuid text;", function (err) {
+					if (err) {
+						console.log ("migrateSchema: err.message == " + err.message);
+						}
+					callback ();
+					});
+				}
+			});
 		}
 	function exportDatabase (f, callback) { //7/21/26 by CC
 		const theTables = ["users", "items", "likes", "files", "media"]; //7/22/26 by CC -- #188
@@ -463,7 +485,7 @@ var config = {
 			guid: getPermalinkUrl (theItem), //6/20/26 by DW
 			title: convertString (theItem.title),
 			inReplyToNum: convertNumber (theItem.inReplyTo), //4/30/26 by DW
-			inReplyToUrl: getInReplyToPermalink (convertNumber (theItem.inReplyTo)), //7/5/26 by DW
+			inReplyToUrl: (convertString (theItem.inReplyToGuid) !== undefined) ? convertString (theItem.inReplyToGuid) : getInReplyToPermalink (convertNumber (theItem.inReplyTo)), //7/5/26 by DW; federation -- a reply to another instance points at that instance's permalink, kept in inReplyToGuid
 			link: convertString (theItem.link),
 			description: convertString (theItem.description),
 			pubDate: convertDate (theItem.pubDate),
@@ -585,6 +607,7 @@ var config = {
 			link: itemRec.link,
 			description: itemRec.description,
 			inReplyTo: itemRec.inReplyTo, //4/30/26 by DW
+			inReplyToGuid: itemRec.inReplyToGuid, //federation -- set instead of inReplyTo when the parent is on another instance; NULL otherwise
 			pubDate: itemRec.pubDate,
 			enclosureUrl: itemRec.enclosureUrl,
 			enclosureType: itemRec.enclosureType,
@@ -1487,11 +1510,17 @@ var config = {
 							callback ({message});
 							}
 						else {
+							var inReplyTo = postRec.inReplyTo, inReplyToGuid = undefined; //federation -- a reply to a post on another instance carries that post's permalink (a url) rather than a local id; keep the two apart
+							if ((typeof (inReplyTo) === "string") && (inReplyTo.indexOf ("http") === 0)) {
+								inReplyToGuid = inReplyTo;
+								inReplyTo = undefined;
+								}
 							const theNewItem = {
 								title: postRec.title,
 								description: sanitizeHtmltext (linkifyUrls (trimTrailingBlankLines (postRec.description))), //7/13/26 by CC -- #175; 7/20/26 -- #192; 7/23/26 -- XSS
 								markdowntext: trimTrailingBlankLines (postRec.markdowntext), //6/3/26 by DW; 7/20/26 by CC -- #192
-								inReplyTo: postRec.inReplyTo,
+								inReplyTo: inReplyTo,
+								inReplyToGuid: inReplyToGuid, //federation
 								feedUrl: getFeedUrl (userRec.screenname),
 								pubDate: new Date (),
 								author: userRec.screenname, //5/4/26 by DW
@@ -2503,7 +2532,9 @@ function startup () {
 				}
 			
 			if (config.database.flUseSqlite) { //7/21/26 by CC -- make sure the tables exist before anything queries
-				initNewDatabase (afterDatabaseInit);
+				initNewDatabase (function () { //federation -- run column migrations before the server comes up
+						migrateSchema (afterDatabaseInit);
+						});
 				}
 			else {
 				afterDatabaseInit ();

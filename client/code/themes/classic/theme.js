@@ -1089,7 +1089,7 @@ function chatUserInterface (userOptions) { //5/2/26 by Claude + DW -- classic th
 					}
 				}
 
-			function addFederatedCard (item) { //federation -- a post from another instance, rendered read-only. It lives on item.federated's server, so every action (like, reply, edit, thread) belongs there: the card links out and does none of them here. Its html was sanitized by our own server (getFederatedTimeline) before it reached us, so it's as safe to render as a local post.
+			function addFederatedCard (item) { //federation -- a post from another instance. It lives on item.federated's server, so likes and edits belong there and the card links out for them. You can reply, though: a reply is an ordinary post on your own instance that points back at this one by its permalink. Its html was sanitized by our own server (getFederatedTimeline) before it reached us, so it's as safe to render as a local post.
 				const theDate = new Date (item.pubDate);
 				const author = item.author || "?";
 				const divThread = $('<div class="divThread federatedCard"></div>');
@@ -1117,6 +1117,15 @@ function chatUserInterface (userOptions) { //5/2/26 by Claude + DW -- classic th
 					divTweetBody.append ($('<div class="divTweetTitle"></div>').text (item.title));
 					}
 				divTweetBody.append ($('<div class="divTweetText"></div>').html (item.description)); //sanitized server-side before it reached us
+
+				if (globals.myRssNetwork.userIsSignedIn ()) { //federation -- one action a federated post does allow: replying to it from here
+					const divReplyIcon = $('<div class="divInsideItemIcon federatedReply"></div>').html ('<i class="far fa-comment"></i>');
+					addToolTip (divReplyIcon, "Reply", "bottom");
+					divReplyIcon.on ("click", function () {
+						openReplyModal (item);
+						});
+					divTweetBody.append ($('<div class="divTweetActions"></div>').append (divReplyIcon));
+					}
 
 				divTweet.append (divAvatar);
 				divTweet.append (divTweetBody);
@@ -2397,7 +2406,7 @@ function chatUserInterface (userOptions) { //5/2/26 by Claude + DW -- classic th
 					}
 				else {
 					if (replyTargetItem !== undefined) {
-						postReply (replyTargetItem.id, htmlText, markdownText);
+						postReply ((replyTargetItem.federated !== undefined) ? replyTargetItem.guid : replyTargetItem.id, htmlText, markdownText); //federation -- reply to a federated post by its permalink (guid), which the server routes to inReplyToGuid; local replies still go by id
 						}
 					else {
 						sendMessageFromModal (htmlText, markdownText);
