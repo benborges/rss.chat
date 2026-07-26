@@ -61,7 +61,7 @@ var config = {
 	flRemoveBlanksAtEnd: true, //7/20/26 by DW
 	titleForSublist: undefined, //7/20/26 by DW
 	flNightlyBackup: false, //7/25/26 by CC -- #207
-	federatedServers: [], //federation -- base URLs of other instances whose public timelines this instance's client also reads; empty means no change from stock behavior
+	federatedServers: [], //7/26/26 by CC -- federation: base URLs of other instances whose public timelines this instance's client also reads; empty means no change from stock behavior
 	backupFolder: "data/backups/", //7/25/26 by CC -- #207
 	legalTags: { //7/23/26 by DW
 		allowedTags: ["p", "br", "a", "b", "i", "strong", "em", "img", "blockquote", "ul", "ol", "li", "h3"],
@@ -254,7 +254,7 @@ var config = {
 		const theStatements = [
 			"create table if not exists users (screenname text not null collate nocase, emailAddress text collate nocase, emailSecret text, prefs text, ctHits integer not null default 0, ctHitsToday integer not null default 0, whenLastHit text, whenCreated text default current_timestamp, whenUpdated text default current_timestamp, primary key (screenname));",
 			"create index if not exists emailAddress on users (emailAddress);",
-			"create table if not exists items (id integer primary key, feedUrl text, author text collate nocase, inReplyTo integer, inReplyToGuid text, title text, link text, description text, pubDate text, enclosureUrl text, enclosureType text, enclosureLength integer, whenCreated text default current_timestamp, whenUpdated text default current_timestamp, markdowntext text, outlineJsontext text, flDeleted integer not null default 0);", //inReplyToGuid -- federation: the permalink of a post on another instance this one replies to; null for ordinary local replies (which use the integer inReplyTo)
+			"create table if not exists items (id integer primary key, feedUrl text, author text collate nocase, inReplyTo integer, inReplyToGuid text, title text, link text, description text, pubDate text, enclosureUrl text, enclosureType text, enclosureLength integer, whenCreated text default current_timestamp, whenUpdated text default current_timestamp, markdowntext text, outlineJsontext text, flDeleted integer not null default 0);", //7/26/26 by CC -- federation: inReplyToGuid is the permalink of a post on another instance this one replies to; null for ordinary local replies (which use the integer inReplyTo)
 			"create index if not exists feedUrl on items (feedUrl);",
 			"create index if not exists author on items (author);",
 			"create table if not exists likes (screenname text collate nocase, itemId integer, whenCreated text default current_timestamp, primary key (screenname, itemId));",
@@ -280,14 +280,17 @@ var config = {
 			}
 		nextStatement ();
 		}
-	function migrateSchema (callback) { //federation -- add columns a fresh database already has (they're in the create above) to a database that predates them. SQLite has no "add column if not exists", so we check first and only alter when it's missing; a current database passes straight through.
+	function migrateSchema (callback) { //7/26/26 by CC -- federation: add columns a fresh database already has (they're in the create above) to a database that predates them. SQLite has no "add column if not exists", so we check first and only alter when it's missing; a current database passes straight through.
 		davesql.runSqltext ("pragma table_info (items);", function (err, result) {
 			if (err || (result === undefined)) {
 				callback ();
 				return;
 				}
-			const flHasColumn = result.some (function (col) {
-				return (col.name === "inReplyToGuid");
+			var flHasColumn = false;
+			result.forEach (function (col) {
+				if (col.name === "inReplyToGuid") {
+					flHasColumn = true;
+					}
 				});
 			if (flHasColumn) {
 				callback ();
@@ -607,7 +610,7 @@ var config = {
 			link: itemRec.link,
 			description: itemRec.description,
 			inReplyTo: itemRec.inReplyTo, //4/30/26 by DW
-			inReplyToGuid: itemRec.inReplyToGuid, //federation -- set instead of inReplyTo when the parent is on another instance; NULL otherwise
+			inReplyToGuid: itemRec.inReplyToGuid, //7/26/26 by CC -- federation: set instead of inReplyTo when the parent is on another instance; NULL otherwise
 			pubDate: itemRec.pubDate,
 			enclosureUrl: itemRec.enclosureUrl,
 			enclosureType: itemRec.enclosureType,
@@ -732,7 +735,7 @@ var config = {
 				}
 			});
 		}
-	function getFederatedTimeline (maxCt, callback) { //federation -- fetch each instance the operator opted into, sanitize every post's html with our own sanitizer (a federated server's markup is not ours to trust), tag it with its origin, and return them merged. An unreachable instance is skipped, never fatal. Empty federatedServers means an empty array and no network calls -- stock behavior.
+	function getFederatedTimeline (maxCt, callback) { //7/26/26 by CC -- federation: fetch each instance the operator opted into, sanitize every post's html with our own sanitizer (a federated server's markup is not ours to trust), tag it with its origin, and return them merged. An unreachable instance is skipped, never fatal. Empty federatedServers means an empty array and no network calls -- stock behavior.
 		const servers = config.federatedServers;
 		if ((servers === undefined) || (servers.length === 0)) {
 			callback (undefined, new Array ());
@@ -1510,8 +1513,8 @@ var config = {
 							callback ({message});
 							}
 						else {
-							var inReplyTo = postRec.inReplyTo, inReplyToGuid = undefined; //federation -- a reply to a post on another instance carries that post's permalink (a url) rather than a local id; keep the two apart
-							if ((typeof (inReplyTo) === "string") && (inReplyTo.indexOf ("http") === 0)) {
+							var inReplyTo = postRec.inReplyTo, inReplyToGuid = undefined; //7/26/26 by CC -- federation: a reply to a post on another instance carries that post's permalink (a url) rather than a local id; keep the two apart
+							if ((typeof (inReplyTo) === "string") && utils.beginsWith (inReplyTo, "http")) {
 								inReplyToGuid = inReplyTo;
 								inReplyTo = undefined;
 								}
@@ -1520,7 +1523,7 @@ var config = {
 								description: sanitizeHtmltext (linkifyUrls (trimTrailingBlankLines (postRec.description))), //7/13/26 by CC -- #175; 7/20/26 -- #192; 7/23/26 -- XSS
 								markdowntext: trimTrailingBlankLines (postRec.markdowntext), //6/3/26 by DW; 7/20/26 by CC -- #192
 								inReplyTo: inReplyTo,
-								inReplyToGuid: inReplyToGuid, //federation
+								inReplyToGuid: inReplyToGuid, //7/26/26 by CC -- federation
 								feedUrl: getFeedUrl (userRec.screenname),
 								pubDate: new Date (),
 								author: userRec.screenname, //5/4/26 by DW
@@ -2318,7 +2321,7 @@ function handleHttpRequest (theRequest) {
 		case "/getrecentitems": //4/29/26 by DW
 			getRecentItems (params.screenname, params.ct, httpReturn);
 			return (true);
-		case "/getfederatedtimeline": //federation -- posts from the instances this operator federates with, sanitized and tagged with their origin; empty when none configured
+		case "/getfederatedtimeline": //7/26/26 by CC -- federation: posts from the instances this operator federates with, sanitized and tagged with their origin; empty when none configured
 			getFederatedTimeline (params.ct, httpReturn);
 			return (true);
 		case "/saveprefs": //5/16/26 by DW 
@@ -2532,9 +2535,9 @@ function startup () {
 				}
 			
 			if (config.database.flUseSqlite) { //7/21/26 by CC -- make sure the tables exist before anything queries
-				initNewDatabase (function () { //federation -- run column migrations before the server comes up
-						migrateSchema (afterDatabaseInit);
-						});
+				initNewDatabase (function () { //7/26/26 by CC -- federation: run column migrations before the server comes up
+					migrateSchema (afterDatabaseInit);
+					});
 				}
 			else {
 				afterDatabaseInit ();

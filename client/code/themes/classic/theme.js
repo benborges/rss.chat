@@ -66,7 +66,7 @@ function chatUserInterface (userOptions) { //5/2/26 by Claude + DW -- classic th
 
 			const itemsById = {};
 			const itemsByGuid = {}; //look up displayed item by guid for updateItem
-			const federatedByGuid = {}; //federation -- a displayed federated card by its (remote) guid, so a local reply pointing at that guid can nest under it
+			const federatedByGuid = {}; //7/26/26 by CC -- federation: a displayed federated card by its (remote) guid, so a local reply pointing at that guid can nest under it
 			var savedTimelineScroll = 0; //6/20/26 by Claude -- where the timeline was scrolled when we left it for a story, restored on the way back
 			var hoistStack = new Array (); //6/27/26 by CC -- #104 hoist/dehoist (MORE/Drummer lineage): ids of the posts hoisted into, outermost first; the last is the current temporary root. Empty == not hoisted, normal timeline showing
 			var hoistScrollStack = new Array (); //6/27/26 by CC -- #104: parallel to hoistStack -- the window scroll position of the view you left when you hoisted, restored when you dehoist back to it
@@ -1090,7 +1090,7 @@ function chatUserInterface (userOptions) { //5/2/26 by Claude + DW -- classic th
 					}
 				}
 
-			function addFederatedCard (item) { //federation -- a post from another instance. It lives on item.federated's server, so likes and edits belong there and the card links out for them. You can reply, though: a reply is an ordinary post on your own instance that points back at this one by its permalink. Its html was sanitized by our own server (getFederatedTimeline) before it reached us, so it's as safe to render as a local post.
+			function addFederatedCard (item) { //7/26/26 by CC -- federation: a post from another instance. It lives on item.federated's server, so likes and edits belong there and the card links out for them. You can reply, though: a reply is an ordinary post on your own instance that points back at this one by its permalink. Its html was sanitized by our own server (getFederatedTimeline) before it reached us, so it's as safe to render as a local post.
 				const theDate = new Date (item.pubDate);
 				const author = item.author || "?";
 				const divThread = $('<div class="divThread federatedCard"></div>');
@@ -1119,27 +1119,37 @@ function chatUserInterface (userOptions) { //5/2/26 by Claude + DW -- classic th
 					}
 				divTweetBody.append ($('<div class="divTweetText"></div>').html (item.description)); //sanitized server-side before it reached us
 
-				if (globals.myRssNetwork.userIsSignedIn ()) { //federation -- one action a federated post does allow: replying to it from here
-					const divReplyIcon = $('<div class="divInsideItemIcon federatedReply"></div>').html ('<i class="far fa-comment"></i>');
-					addToolTip (divReplyIcon, "Reply", "bottom");
-					divReplyIcon.on ("click", function () {
-						openReplyModal (item);
+				if (globals.myRssNetwork.userIsSignedIn () && (options.itemIconBar !== undefined)) { //7/26/26 by CC -- federation: one action a federated post does allow: replying to it from here, shown with the app's own comment icon rather than a bespoke one
+					var commentIconDef;
+					options.itemIconBar.forEach (function (iconDef) {
+						if (iconDef.name === "comment") {
+							commentIconDef = iconDef;
+							}
 						});
-					divTweetBody.append ($('<div class="divTweetActions"></div>').append (divReplyIcon));
+					if (commentIconDef !== undefined) {
+						const divReplyIcon = $('<div class="divInsideItemIcon"></div>').html (commentIconDef.icon);
+						if (commentIconDef.tooltip !== undefined) {
+							addToolTip (divReplyIcon, commentIconDef.tooltip, "bottom");
+							}
+						divReplyIcon.on ("click", function () {
+							openReplyModal (item);
+							});
+						divTweetBody.append ($('<div class="divTweetActions"></div>').append (divReplyIcon));
+						}
 					}
 
 				divTweet.append (divAvatar);
 				divTweet.append (divTweetBody);
 				divThread.append (divTweet);
-				const divReplies = $('<div class="divReplies"></div>'); //federation -- cross-instance replies to this post (made from our instance) nest here
+				const divReplies = $('<div class="divReplies"></div>'); //7/26/26 by CC -- federation: cross-instance replies to this post (made from our instance) nest here
 				divThread.append (divReplies);
 				divTimeline.prepend (divThread);
 				if (item.guid !== undefined) {
-					federatedByGuid [item.guid] = {divThread, divReplies};
+					federatedByGuid [item.guid] = {divThread, divReplies, author};
 					}
 				}
 			function addItemToTimeline (item, targetContainer) { //6/20/26 by Claude -- targetContainer set means render this one post into its own area (the story page) instead of the timeline
-				if (item.federated !== undefined) { //federation -- a post from another instance; render a read-only card and stop, never touching the local item maps or interactive wiring below
+				if (item.federated !== undefined) { //7/26/26 by CC -- federation: a post from another instance; render a read-only card and stop, never touching the local item maps or interactive wiring below
 					addFederatedCard (item);
 					return;
 					}
@@ -1159,29 +1169,42 @@ function chatUserInterface (userOptions) { //5/2/26 by Claude + DW -- classic th
 				wireAvatarClick (divAvatar, item.screenname);
 				const divTweetBody = $('<div class="divTweetBody"></div>');
 
-				var parentAuthor; //display name of who this post replies to -- 6/30/26 by CC #121
-				if (parentEntry === undefined) { //parent isn't on screen (the story view, or a timeline reply whose parent isn't loaded) -- use the name the server computed
-					parentAuthor = item.inReplyToAuthor;
+				var replyingToText, parentRemoteUrl; //6/30/26 by CC #121; parentRemoteUrl is set when the replied-to post lives on another instance -- federation
+				if (parentEntry !== undefined) { //parent is loaded -- use its display name, matching the existing timeline behavior
+					replyingToText = "Replying to @" + (parentEntry.item.author || "?");
+				}
+				else if ((item.inReplyToNum === undefined) && (item.inReplyToUrl !== undefined)) { //7/26/26 by CC -- federation: a reply to a post on another instance, reachable only by its url
+					parentRemoteUrl = item.inReplyToUrl;
+					const fed = federatedByGuid [parentRemoteUrl];
+					const instance = getDomainFromUrl (parentRemoteUrl);
+					replyingToText = (fed !== undefined) ? ("Replying to @" + fed.author + " on " + instance) : ("Replying to a post on " + instance);
+				}
+				else if (item.inReplyToAuthor !== undefined) { //parent isn't on screen -- use the name the server computed
+					replyingToText = "Replying to @" + item.inReplyToAuthor;
+				}
+				if (replyingToText !== undefined) {
+					const divReplyingTo = $('<div class="divReplyingTo"></div>').text (replyingToText);
+					if (parentRemoteUrl !== undefined) { //7/26/26 by CC -- federation: the parent lives on another instance; the line opens it there
+						divReplyingTo.on ("click", function (theEvent) {
+							theEvent.preventDefault ();
+							theEvent.stopPropagation ();
+							window.open (parentRemoteUrl);
+						});
 					}
-				else { //parent is loaded -- use its display name, matching the existing timeline behavior
-					parentAuthor = parentEntry.item.author || "?";
-					}
-				if (parentAuthor !== undefined) {
-					const divReplyingTo = $('<div class="divReplyingTo"></div>').text ("Replying to @" + parentAuthor);
-					if (item.inReplyTo !== undefined) { //6/30/26 by CC #121: click the line to reach the post this one replies to -- the message above it
+					else if (item.inReplyTo !== undefined) { //6/30/26 by CC #121: click the line to reach the post this one replies to -- the message above it
 						divReplyingTo.on ("click", function (theEvent) {
 							theEvent.preventDefault ();
 							theEvent.stopPropagation ();
 							if (divChat.hasClass ("storyPage") === true) { //story view: climb one step up the thread, leaving the trail below
 								popUpOrSelectParent (item);
-								}
+							}
 							else { //timeline: open the replied-to post as a story in place
 								openStoryInPlace (location.origin + "?id=" + item.inReplyTo);
-								}
-							});
-						}
-					divTweetBody.append (divReplyingTo);
+							}
+						});
 					}
+					divTweetBody.append (divReplyingTo);
+				}
 
 				const divTweetHeader = $('<div class="divTweetHeader"></div>');
 				const spanAuthor = $('<span class="spanAuthor"></span>');
@@ -1643,11 +1666,11 @@ function chatUserInterface (userOptions) { //5/2/26 by Claude + DW -- classic th
 
 			function loadRecentItems (callback) { //6/27/26 by CC -- optional callback fires once the timeline is loaded, so the scanner can open over a populated itemsById
 				function renderAll (allItems) {
-					allItems.sort (function (a, b) { //federation -- merge local and federated by time; oldest first so a reply's parent is added before the reply, and prepend puts newest on top
+					allItems.sort (function (a, b) { //7/26/26 by CC -- federation: merge local and federated by time; oldest first so a reply's parent is added before the reply, and prepend puts newest on top
 						return (new Date (a.pubDate) - new Date (b.pubDate));
 						});
 					allItems.forEach (function (item) {
-						const federatedParent = ((item.federated === undefined) && (item.inReplyToUrl !== undefined)) ? federatedByGuid [item.inReplyToUrl] : undefined; //federation -- a local reply whose parent is a federated card already on screen; sorted oldest-first, so the card is registered before its reply
+						const federatedParent = ((item.federated === undefined) && (item.inReplyToUrl !== undefined)) ? federatedByGuid [item.inReplyToUrl] : undefined; //7/26/26 by CC -- federation: a local reply whose parent is a federated card already on screen; sorted oldest-first, so the card is registered before its reply
 						if (federatedParent !== undefined) {
 							addItemToTimeline (item, federatedParent.divReplies); //nest it under the federated post it answers
 						}
@@ -1671,7 +1694,7 @@ function chatUserInterface (userOptions) { //5/2/26 by Claude + DW -- classic th
 							}
 						return;
 						}
-					globals.myRssNetwork.getFederatedTimeline (function (fedErr, fedItems) { //federation -- the server returns posts from the instances it federates with, sanitized and tagged with origin; empty for a stock instance, and a down instance is never fatal
+					globals.myRssNetwork.getFederatedTimeline (function (fedErr, fedItems) { //7/26/26 by CC -- federation: the server returns posts from the instances it federates with, sanitized and tagged with origin; empty for a stock instance, and a down instance is never fatal
 						var allItems = theItems.slice ();
 						if (!fedErr && (fedItems !== undefined)) {
 							allItems = allItems.concat (fedItems);
@@ -2418,7 +2441,7 @@ function chatUserInterface (userOptions) { //5/2/26 by Claude + DW -- classic th
 					}
 				else {
 					if (replyTargetItem !== undefined) {
-						postReply ((replyTargetItem.federated !== undefined) ? replyTargetItem.guid : replyTargetItem.id, htmlText, markdownText); //federation -- reply to a federated post by its permalink (guid), which the server routes to inReplyToGuid; local replies still go by id
+						postReply ((replyTargetItem.federated !== undefined) ? replyTargetItem.guid : replyTargetItem.id, htmlText, markdownText); //7/26/26 by CC -- federation: reply to a federated post by its permalink (guid), which the server routes to inReplyToGuid; local replies still go by id
 						}
 					else {
 						sendMessageFromModal (htmlText, markdownText);
