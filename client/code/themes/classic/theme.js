@@ -1089,7 +1089,45 @@ function chatUserInterface (userOptions) { //5/2/26 by Claude + DW -- classic th
 					}
 				}
 
+			function addFederatedCard (item) { //federation -- a post from another instance, rendered read-only. It lives on item.federated's server, so every action (like, reply, edit, thread) belongs there: the card links out and does none of them here. Its html was sanitized by our own server (getFederatedTimeline) before it reached us, so it's as safe to render as a local post.
+				const theDate = new Date (item.pubDate);
+				const author = item.author || "?";
+				const divThread = $('<div class="divThread federatedCard"></div>');
+				divThread.data ("item", item);
+				const divTweet = $('<div class="divTweet"></div>');
+				const divAvatar = $('<div class="divAvatar"></div>');
+				populateAvatar (divAvatar, item.imageUrl || appConsts.urlDefaultImage, author.charAt (0).toUpperCase ());
+				const divTweetBody = $('<div class="divTweetBody"></div>');
+
+				if (item.inReplyToAuthor !== undefined) { //show the reply context the source server computed, without local threading
+					divTweetBody.append ($('<div class="divReplyingTo"></div>').text ("Replying to @" + item.inReplyToAuthor));
+					}
+
+				const divTweetHeader = $('<div class="divTweetHeader"></div>');
+				divTweetHeader.append ($('<span class="spanAuthor"></span>').text (author));
+				const aTimestamp = $('<a class="aTimestamp" target="_blank"></a>').attr ("href", item.guid); //the permalink lives on the source instance; open it there
+				aTimestamp.append (getUpdateableTime (theDate, "", true));
+				divTweetHeader.append ($('<span class="spanDot"> · </span>'));
+				divTweetHeader.append (aTimestamp);
+				divTweetHeader.append ($('<span class="spanDot"> · </span>'));
+				divTweetHeader.append ($('<a class="spanFederatedFrom" target="_blank"></a>').attr ("href", item.federated).text (getDomainFromUrl (item.federated))); //whose instance this came from, linking home
+				divTweetBody.append (divTweetHeader);
+
+				if (item.title !== undefined && item.title.length > 0) {
+					divTweetBody.append ($('<div class="divTweetTitle"></div>').text (item.title));
+					}
+				divTweetBody.append ($('<div class="divTweetText"></div>').html (item.description)); //sanitized server-side before it reached us
+
+				divTweet.append (divAvatar);
+				divTweet.append (divTweetBody);
+				divThread.append (divTweet);
+				divTimeline.prepend (divThread);
+				}
 			function addItemToTimeline (item, targetContainer) { //6/20/26 by Claude -- targetContainer set means render this one post into its own area (the story page) instead of the timeline
+				if (item.federated !== undefined) { //federation -- a post from another instance; render a read-only card and stop, never touching the local item maps or interactive wiring below
+					addFederatedCard (item);
+					return;
+					}
 				if (item.inReplyTo === undefined && item.inReplyToNum !== undefined) { //6/25/26 by CC -- the server names the parent's id inReplyToNum; thread on it so replies nest on reload, not just on the live socket path
 					item.inReplyTo = item.inReplyToNum;
 					}
@@ -1589,23 +1627,36 @@ function chatUserInterface (userOptions) { //5/2/26 by Claude + DW -- classic th
 				}
 
 			function loadRecentItems (callback) { //6/27/26 by CC -- optional callback fires once the timeline is loaded, so the scanner can open over a populated itemsById
+				function renderAll (allItems) {
+					allItems.sort (function (a, b) { //federation -- merge local and federated by time; oldest first so a reply's parent is added before the reply, and prepend puts newest on top
+						return (new Date (a.pubDate) - new Date (b.pubDate));
+						});
+					allItems.forEach (function (item) {
+						addItemToTimeline (item);
+						});
+					flTimelineLoaded = true; //6/29/26 by CC -- #118: timeline is populated; Home and Back can reveal it
+					selectNewestItem (); //7/3/26 by CC -- #133: the cursor always starts on the top post
+					restorePendingContextDraft (); //6/21/26 by CC -- items are in; reopen a reply/edit draft against its target post
+					if (callback !== undefined) {
+						callback ();
+						}
+					}
 				globals.myRssNetwork.getRecentItems (options.ctRecentItems, function (err, theItems) {
 					if (err) {
 						console.log ("loadRecentItems: err.message == " + err.message);
 						restorePendingContextDraft (); //6/21/26 by CC -- items failed to load; still let a waiting draft restore (text preserved even if its target post is missing)
+						if (callback !== undefined) {
+							callback ();
+							}
+						return;
 						}
-					else {
-						theItems.reverse (); //oldest first so a reply's parent is added before the reply
-						theItems.forEach (function (item) {
-							addItemToTimeline (item);
-							});
-						flTimelineLoaded = true; //6/29/26 by CC -- #118: timeline is populated; Home and Back can reveal it
-						selectNewestItem (); //7/3/26 by CC -- #133: the cursor always starts on the top post
-						restorePendingContextDraft (); //6/21/26 by CC -- items are in; reopen a reply/edit draft against its target post
-						}
-					if (callback !== undefined) {
-						callback ();
-						}
+					globals.myRssNetwork.getFederatedTimeline (function (fedErr, fedItems) { //federation -- the server returns posts from the instances it federates with, sanitized and tagged with origin; empty for a stock instance, and a down instance is never fatal
+						var allItems = theItems.slice ();
+						if (!fedErr && (fedItems !== undefined)) {
+							allItems = allItems.concat (fedItems);
+							}
+						renderAll (allItems);
+						});
 					});
 				}
 

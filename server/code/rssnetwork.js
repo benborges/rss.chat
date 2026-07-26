@@ -61,6 +61,7 @@ var config = {
 	flRemoveBlanksAtEnd: true, //7/20/26 by DW
 	titleForSublist: undefined, //7/20/26 by DW
 	flNightlyBackup: false, //7/25/26 by CC -- #207
+	federatedServers: [], //federation -- base URLs of other instances whose public timelines this instance's client also reads; empty means no change from stock behavior
 	backupFolder: "data/backups/", //7/25/26 by CC -- #207
 	legalTags: { //7/23/26 by DW
 		allowedTags: ["p", "br", "a", "b", "i", "strong", "em", "img", "blockquote", "ul", "ol", "li", "h3"],
@@ -706,6 +707,52 @@ var config = {
 					});
 				callback (undefined, items);
 				}
+			});
+		}
+	function getFederatedTimeline (maxCt, callback) { //federation -- fetch each instance the operator opted into, sanitize every post's html with our own sanitizer (a federated server's markup is not ours to trust), tag it with its origin, and return them merged. An unreachable instance is skipped, never fatal. Empty federatedServers means an empty array and no network calls -- stock behavior.
+		const servers = config.federatedServers;
+		if ((servers === undefined) || (servers.length === 0)) {
+			callback (undefined, new Array ());
+			return;
+			}
+		if (maxCt === undefined) {
+			maxCt = config.maxRecentItems;
+			}
+		else {
+			maxCt = Number (maxCt);
+			if (maxCt > config.maxRecentItems) {
+				maxCt = config.maxRecentItems;
+				}
+			}
+		var allItems = new Array (), ctPending = servers.length;
+		function oneDone () {
+			ctPending--;
+			if (ctPending <= 0) {
+				callback (undefined, allItems);
+				}
+			}
+		servers.forEach (function (baseUrl) {
+			if (baseUrl.charAt (baseUrl.length - 1) !== "/") {
+				baseUrl += "/";
+				}
+			request (baseUrl + "getrecentitems?ct=" + maxCt, function (err, response, body) {
+				if (!err && (response !== undefined) && (response.statusCode === 200)) {
+					try {
+						JSON.parse (body).forEach (function (item) {
+							item.description = sanitizeHtmltext (item.description);
+							item.federated = baseUrl; //the client renders these read-only, linking back here
+							allItems.push (item);
+							});
+						}
+					catch (parseErr) {
+						console.log ("getFederatedTimeline: " + baseUrl + " parse err == " + parseErr.message);
+						}
+					}
+				else {
+					console.log ("getFederatedTimeline: " + baseUrl + " unreachable");
+					}
+				oneDone ();
+				});
 			});
 		}
 	function getItemById (screenname, id, callback) { //6/4/26 by Claude
@@ -2241,6 +2288,9 @@ function handleHttpRequest (theRequest) {
 			return (true);
 		case "/getrecentitems": //4/29/26 by DW
 			getRecentItems (params.screenname, params.ct, httpReturn);
+			return (true);
+		case "/getfederatedtimeline": //federation -- posts from the instances this operator federates with, sanitized and tagged with their origin; empty when none configured
+			getFederatedTimeline (params.ct, httpReturn);
 			return (true);
 		case "/saveprefs": //5/16/26 by DW 
 			savePrefs (params.emailaddress, params.emailcode, params.jsontext, httpReturn);

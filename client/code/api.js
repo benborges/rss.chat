@@ -187,6 +187,9 @@ function rssNetworkServer (userOptions) {
 		const screenname = getScreenname (); //6/24/26 by DW
 		servercall ("getrecentitems", {screenname, ct}, false, "GET", callback);
 		}
+	function getFederatedTimeline (callback) { //federation -- posts from the instances this server federates with, already sanitized and tagged with their origin by the server; empty array when none configured. ct defaults to the server's maxRecentItems.
+		servercall ("getfederatedtimeline", undefined, false, "GET", callback);
+		}
 	function savePrefs (thePrefs, callback) { //5/16/26 by DW
 		if (userIsSignedIn ()) {
 			const params = {
@@ -318,6 +321,7 @@ function rssNetworkServer (userOptions) {
 	this.getBaseFeedUrl = getBaseFeedUrl; //4/23/26 by DW
 	this.getSubscriptionList = getSubscriptionList; 
 	this.getRecentItems = getRecentItems; //4/29/26 by DW
+	this.getFederatedTimeline = getFederatedTimeline; //federation
 	this.savePrefs = savePrefs; //5/16/26 by DW
 	this.willRedirect = willRedirect; //5/17/26 by DW
 	this.updatePost = updatePost; //5/21/26 by DW
