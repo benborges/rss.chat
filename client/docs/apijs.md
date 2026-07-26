@@ -1,4 +1,4 @@
-# Calling the API from the browser: api.js
+# Calling the RSS Network from the browser: api.js
 
 [api.js](https://github.com/scripting/rss.chat/blob/main/client/code/api.js) is how the rss.chat client talks to its server, and you can use it in your own pages. Every endpoint in [the API](../../server/docs/api.md) is a one-line method call, with the query strings, the authentication, and the response handling done for you.
 
