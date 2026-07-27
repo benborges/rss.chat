@@ -322,6 +322,9 @@ function getPermalinkUrl (id) { //6/25/26 by DW
 	return (theGuid);
 	}
 function setLastMessageRead (theItem) { //6/27/26 by DW
+	if (theItem.federated !== undefined) { //7/27/26 by CC -- federation: a federated card carries the peer's id, which is meaningless against our own read bookmark and would poison it permanently (their 5000 vs our 400); never record it
+		return;
+		}
 	var flSet = false;
 	if (appPrefs.idLastMessageRead === undefined) { //6/27/26 by DW
 		flSet = true;

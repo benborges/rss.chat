@@ -761,7 +761,7 @@ var config = {
 			if (baseUrl.charAt (baseUrl.length - 1) !== "/") {
 				baseUrl += "/";
 				}
-			request (baseUrl + "getrecentitems?ct=" + maxCt, function (err, response, body) {
+			request ({url: baseUrl + "getrecentitems?ct=" + maxCt, timeout: 5000}, function (err, response, body) { //7/27/26 by CC -- federation: a peer that accepts the connection but never answers must not hang the whole call; 5 seconds then move on
 				if (!err && (response !== undefined) && (response.statusCode === 200)) {
 					try {
 						JSON.parse (body).forEach (function (item) {
@@ -781,14 +781,43 @@ var config = {
 				});
 			});
 		}
-	function getRemoteItem (guid, callback) { //7/26/26 by CC -- federation: follow a source:inReplyTo url to the post it points at on another instance, threadwalker-style. Fetch it by its permalink, sanitize it with our own sanitizer, tag it with its origin, and return it. Returns undefined when the guid isn't a url or the instance can't be reached -- the caller shows what it can.
+	function normalizeBaseUrl (baseUrl) { //7/27/26 by CC -- federation: base urls compare equal only with a trailing slash
+		if ((baseUrl !== undefined) && (baseUrl.length > 0) && (baseUrl.charAt (baseUrl.length - 1) !== "/")) {
+			return (baseUrl + "/");
+			}
+		return (baseUrl);
+		}
+	function isFederationOrigin (baseUrl) { //7/27/26 by CC -- federation: true only for this server itself or an instance the operator listed in federatedServers. The gate that keeps /getremoteitem from being an open outbound-fetch primitive against internal addresses.
+		if (baseUrl === normalizeBaseUrl (config.urlServerForClient)) {
+			return (true);
+			}
+		const servers = config.federatedServers || new Array ();
+		var flFound = false;
+		servers.forEach (function (s) {
+			if (normalizeBaseUrl (s) === baseUrl) {
+				flFound = true;
+				}
+			});
+		return (flFound);
+		}
+	function getRemoteItem (guid, callback) { //7/26/26 by CC -- federation: follow a source:inReplyTo url to the post it points at on another instance, threadwalker-style. Fetch it by its permalink, sanitize it with our own sanitizer, tag it with its origin, and return it. Returns undefined when the guid isn't a url we federate with or the instance can't be reached -- the caller shows what it can.
 		if ((guid === undefined) || !utils.beginsWith (guid, "http")) {
 			callback (undefined, undefined);
 			return;
 			}
 		const ixSlash = guid.indexOf ("/", guid.indexOf ("://") + 3);
 		const baseUrl = (ixSlash > 0) ? guid.substring (0, ixSlash + 1) : guid;
-		request (baseUrl + "getitembyguid?guid=" + encodeURIComponent (guid), function (err, response, body) {
+		if (!isFederationOrigin (baseUrl)) { //7/27/26 by CC -- federation: refuse to fetch anything that isn't us or a listed peer -- no probing internal hosts through this endpoint
+			callback (undefined, undefined);
+			return;
+			}
+		if (baseUrl === normalizeBaseUrl (config.urlServerForClient)) { //7/27/26 by CC -- federation: the post is one of ours; serve it from the database instead of fetching ourselves over the network, and return it as a normal local item (no federated tag)
+			const ixId = guid.indexOf ("?id=");
+			const id = (ixId >= 0) ? guid.substring (ixId + 4) : undefined;
+			getItemById (undefined, id, callback);
+			return;
+			}
+		request ({url: baseUrl + "getitembyguid?guid=" + encodeURIComponent (guid), timeout: 5000}, function (err, response, body) { //7/27/26 by CC -- federation: bounded, same as the timeline fetch
 			if (!err && (response !== undefined) && (response.statusCode === 200)) {
 				try {
 					const item = JSON.parse (body);

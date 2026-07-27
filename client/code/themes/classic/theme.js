@@ -67,6 +67,7 @@ function chatUserInterface (userOptions) { //5/2/26 by Claude + DW -- classic th
 			const itemsById = {};
 			const itemsByGuid = {}; //look up displayed item by guid for updateItem
 			const federatedByGuid = {}; //7/26/26 by CC -- federation: a displayed federated card by its (remote) guid, so a local reply pointing at that guid can nest under it
+			const remoteAuthorCache = {}; //7/27/26 by CC -- federation: remote author names already resolved by url, so a page of replies to the same post makes one round-trip, not one each
 			var savedTimelineScroll = 0; //6/20/26 by Claude -- where the timeline was scrolled when we left it for a story, restored on the way back
 			var hoistStack = new Array (); //6/27/26 by CC -- #104 hoist/dehoist (MORE/Drummer lineage): ids of the posts hoisted into, outermost first; the last is the current temporary root. Empty == not hoisted, normal timeline showing
 			var hoistScrollStack = new Array (); //6/27/26 by CC -- #104: parallel to hoistStack -- the window scroll position of the view you left when you hoisted, restored when you dehoist back to it
@@ -896,6 +897,9 @@ function chatUserInterface (userOptions) { //5/2/26 by Claude + DW -- classic th
 					Object.keys (itemsByGuid).forEach (function (theGuid) {
 						delete itemsByGuid [theGuid];
 						});
+					Object.keys (federatedByGuid).forEach (function (theGuid) { //7/27/26 by CC -- federation: clear it too, or a stale entry points a later reply at a detached divReplies
+						delete federatedByGuid [theGuid];
+						});
 					}
 				viewHome ();
 				}
@@ -1119,6 +1123,28 @@ function chatUserInterface (userOptions) { //5/2/26 by Claude + DW -- classic th
 					}
 				}
 
+			function federatedSafeUrl (theUrl) { //7/27/26 by CC -- federation: a peer supplies these urls; only http(s) may become an href or a window.open, so a "javascript:" or "data:" guid can't run script in our origin when the signed-in user clicks it
+				if ((typeof (theUrl) === "string") && (beginsWith (theUrl, "http://") || beginsWith (theUrl, "https://"))) {
+					return (theUrl);
+					}
+				return (undefined);
+				}
+			function insertThreadByDate (divThread, theDate) { //7/27/26 by CC -- federation: place a late-arriving federated card at its spot in the newest-first timeline, so peers merge in by time without the load waiting on them
+				var flInserted = false;
+				divTimeline.children (".divThread").each (function () {
+					if (flInserted) {
+						return;
+						}
+					const existing = $(this).data ("item");
+					if ((existing !== undefined) && (new Date (existing.pubDate) < theDate)) {
+						$(this).before (divThread);
+						flInserted = true;
+						}
+					});
+				if (!flInserted) {
+					divTimeline.append (divThread);
+					}
+				}
 			function addFederatedCard (item, targetContainer) { //7/26/26 by CC -- federation: a post from another instance. It lives on item.federated's server, so likes and edits belong there and the card links out for them. You can reply, though: a reply is an ordinary post on your own instance that points back at this one by its permalink. Its html was sanitized by our own server (getFederatedTimeline) before it reached us, so it's as safe to render as a local post.
 				const theDate = new Date (item.pubDate);
 				const author = item.author || "?";
@@ -1126,7 +1152,7 @@ function chatUserInterface (userOptions) { //5/2/26 by Claude + DW -- classic th
 				divThread.data ("item", item);
 				const divTweet = $('<div class="divTweet"></div>');
 				const divAvatar = $('<div class="divAvatar"></div>');
-				populateAvatar (divAvatar, item.imageUrl || appConsts.urlDefaultImage, author.charAt (0).toUpperCase ());
+				populateAvatar (divAvatar, federatedSafeUrl (item.imageUrl) || appConsts.urlDefaultImage, author.charAt (0).toUpperCase ()); //7/27/26 by CC -- federation: a peer's imageUrl is untrusted; only http(s) reaches the avatar
 				const divTweetBody = $('<div class="divTweetBody"></div>');
 
 				if ((item.inReplyToAuthor !== undefined) || (item.inReplyToUrl !== undefined)) { //7/26/26 by CC -- federation: a federated post may itself reply to another post up the thread; show that context and, in the story view, let the reader climb one more step across the boundary
@@ -1141,7 +1167,9 @@ function chatUserInterface (userOptions) { //5/2/26 by Claude + DW -- classic th
 								popUpOrSelectParent (item);
 								}
 							else { //timeline: open the replied-to post on its own instance
-								window.open (item.inReplyToUrl);
+								if (federatedSafeUrl (item.inReplyToUrl) !== undefined) {
+									window.open (item.inReplyToUrl);
+									}
 								}
 							});
 						}
@@ -1150,12 +1178,12 @@ function chatUserInterface (userOptions) { //5/2/26 by Claude + DW -- classic th
 
 				const divTweetHeader = $('<div class="divTweetHeader"></div>');
 				divTweetHeader.append ($('<span class="spanAuthor"></span>').text (author));
-				const aTimestamp = $('<a class="aTimestamp" target="_blank"></a>').attr ("href", item.guid); //the permalink lives on the source instance; open it there
+				const aTimestamp = $('<a class="aTimestamp" target="_blank"></a>').attr ("href", federatedSafeUrl (item.guid)); //7/27/26 by CC -- federation: the permalink lives on the source instance; only link it if it's a real http(s) url
 				aTimestamp.append (getUpdateableTime (theDate, "", true));
 				divTweetHeader.append ($('<span class="spanDot"> · </span>'));
 				divTweetHeader.append (aTimestamp);
 				divTweetHeader.append ($('<span class="spanDot"> · </span>'));
-				divTweetHeader.append ($('<a class="spanFederatedFrom" target="_blank"></a>').attr ("href", item.federated).text (getDomainFromUrl (item.federated))); //whose instance this came from, linking home
+				divTweetHeader.append ($('<a class="spanFederatedFrom" target="_blank"></a>').attr ("href", federatedSafeUrl (item.federated)).text (getDomainFromUrl (item.federated))); //whose instance this came from, linking home
 				divTweetBody.append (divTweetHeader);
 
 				if (item.title !== undefined && item.title.length > 0) {
@@ -1172,6 +1200,7 @@ function chatUserInterface (userOptions) { //5/2/26 by Claude + DW -- classic th
 						});
 					if (commentIconDef !== undefined) {
 						const divReplyIcon = $('<div class="divInsideItemIcon"></div>').html (commentIconDef.icon);
+						divReplyIcon.data ("iconDef", commentIconDef); //7/27/26 by CC -- federation: refreshIconsEnabled reads enabled from here; without it the one working action on a federated card looks disabled when the card is selected
 						if (commentIconDef.tooltip !== undefined) {
 							addToolTip (divReplyIcon, commentIconDef.tooltip, "bottom");
 							}
@@ -1191,9 +1220,9 @@ function chatUserInterface (userOptions) { //5/2/26 by Claude + DW -- classic th
 					targetContainer.append (divThread);
 					}
 				else {
-					divTimeline.prepend (divThread);
+					insertThreadByDate (divThread, theDate); //7/27/26 by CC -- federation: merge in by time (peers arrive after the local timeline is already up)
 					}
-				if (item.guid !== undefined) {
+				if ((item.guid !== undefined) && (targetContainer === undefined)) { //7/27/26 by CC -- federation: only register a top-level timeline card as a nesting target; a story-view or nested card is transient and would leave a detached divReplies behind
 					federatedByGuid [item.guid] = {divThread, divReplies, author};
 					}
 				}
@@ -1241,11 +1270,17 @@ function chatUserInterface (userOptions) { //5/2/26 by Claude + DW -- classic th
 					const divReplyingTo = $('<div class="divReplyingTo"></div>').text (replyingToText);
 					if (parentRemoteUrl !== undefined) { //7/26/26 by CC -- federation: the parent lives on another instance
 						if (flResolveRemoteAuthor) { //follow the url to name the author, threadwalker-style, and fill the line in when it comes back
-							globals.myRssNetwork.getRemoteItem (parentRemoteUrl, function (err, parentItem) {
-								if ((parentItem !== undefined) && (parentItem.author !== undefined)) {
-									divReplyingTo.text ("Replying to @" + parentItem.author + " on " + getDomainFromUrl (parentRemoteUrl));
-								}
-							});
+							if (remoteAuthorCache [parentRemoteUrl] !== undefined) { //7/27/26 by CC -- federation: many replies on a page share one parent; resolve each url only once
+								divReplyingTo.text ("Replying to @" + remoteAuthorCache [parentRemoteUrl] + " on " + getDomainFromUrl (parentRemoteUrl));
+							}
+							else {
+								globals.myRssNetwork.getRemoteItem (parentRemoteUrl, function (err, parentItem) {
+									if ((parentItem !== undefined) && (parentItem.author !== undefined)) {
+										remoteAuthorCache [parentRemoteUrl] = parentItem.author;
+										divReplyingTo.text ("Replying to @" + parentItem.author + " on " + getDomainFromUrl (parentRemoteUrl));
+									}
+								});
+							}
 						}
 						divReplyingTo.on ("click", function (theEvent) {
 							theEvent.preventDefault ();
@@ -1599,6 +1634,11 @@ function chatUserInterface (userOptions) { //5/2/26 by Claude + DW -- classic th
 					return;
 					}
 				const myScreenname = globals.myRssNetwork.getScreenname ();
+				var inReplyToLocal = inReplyTo, inReplyToUrl = undefined; //7/27/26 by CC -- federation: a reply to a federated post carries a url parent, not a local id; render it the same way a reloaded one is
+				if ((typeof (inReplyTo) === "string") && (beginsWith (inReplyTo, "http://") || beginsWith (inReplyTo, "https://"))) {
+					inReplyToUrl = inReplyTo;
+					inReplyToLocal = undefined;
+					}
 				const chatItem = {
 					id: data.id,
 					guid: data.guid,
@@ -1611,10 +1651,13 @@ function chatUserInterface (userOptions) { //5/2/26 by Claude + DW -- classic th
 					imageUrl: appPrefs.myAvatarImageUrl,
 					feedLink: appPrefs.myFeedLink,
 					feedDescription: appPrefs.myFeedDescription,
-					inReplyTo: inReplyTo
+					inReplyTo: inReplyToLocal,
+					inReplyToUrl: inReplyToUrl //7/27/26 by CC -- federation
 					};
 				addItemToTimeline (chatItem);
-				bumpParentReplyCount (chatItem); //7/3/26 by CC -- our own reply is newer than the parent's server count
+				if (inReplyToLocal !== undefined) { //7/27/26 by CC -- federation: only a local parent has an entry to bump; a remote parent has none, and itemsById ["<url>"] would just miss
+					bumpParentReplyCount (chatItem); //7/3/26 by CC -- our own reply is newer than the parent's server count
+					}
 				}
 
 			function sendMessage () {
@@ -1733,24 +1776,54 @@ function chatUserInterface (userOptions) { //5/2/26 by Claude + DW -- classic th
 
 			function loadRecentItems (callback) { //6/27/26 by CC -- optional callback fires once the timeline is loaded, so the scanner can open over a populated itemsById
 				function renderAll (allItems) {
-					allItems.sort (function (a, b) { //7/26/26 by CC -- federation: merge local and federated by time; oldest first so a reply's parent is added before the reply, and prepend puts newest on top
+					allItems.sort (function (a, b) { //oldest first so a reply's parent is added before the reply, and prepend puts newest on top
 						return (new Date (a.pubDate) - new Date (b.pubDate));
 						});
 					allItems.forEach (function (item) {
-						const federatedParent = ((item.federated === undefined) && (item.inReplyToUrl !== undefined)) ? federatedByGuid [item.inReplyToUrl] : undefined; //7/26/26 by CC -- federation: a local reply whose parent is a federated card already on screen; sorted oldest-first, so the card is registered before its reply
-						if (federatedParent !== undefined) {
-							addItemToTimeline (item, federatedParent.divReplies); //nest it under the federated post it answers
-						}
-						else {
-							addItemToTimeline (item);
-						}
-					});
+						addItemToTimeline (item);
+						});
 					flTimelineLoaded = true; //6/29/26 by CC -- #118: timeline is populated; Home and Back can reveal it
 					selectNewestItem (); //7/3/26 by CC -- #133: the cursor always starts on the top post
 					restorePendingContextDraft (); //6/21/26 by CC -- items are in; reopen a reply/edit draft against its target post
 					if (callback !== undefined) {
 						callback ();
 						}
+					}
+				function reHomeLocalRepliesUnder (fedItem) { //7/27/26 by CC -- federation: a federated card just arrived; pull any local cross-instance replies to it (already rendered flat) in under it
+					const target = federatedByGuid [fedItem.guid];
+					if (target === undefined) {
+						return;
+						}
+					divTimeline.children (".divThread").each (function () {
+						const it = $(this).data ("item");
+						if ((it !== undefined) && (it.federated === undefined) && (it.inReplyToUrl === fedItem.guid)) {
+							target.divReplies.append ($(this));
+							}
+						});
+					}
+				function loadFederated () { //7/27/26 by CC -- federation: fetch the peers AFTER the local timeline is on screen, so a slow peer can never blank it; merge each in by time, nesting replies whichever way they cross the boundary
+					globals.myRssNetwork.getFederatedTimeline (function (fedErr, fedItems) {
+						if (fedErr || (fedItems === undefined)) {
+							return;
+							}
+						fedItems.sort (function (a, b) {
+							return (new Date (b.pubDate) - new Date (a.pubDate)); //newest first
+							});
+						fedItems = fedItems.slice (0, options.ctRecentItems); //7/27/26 by CC -- federation: keep only the newest N across all peers, so several instances can't push local posts off the screen
+						fedItems.sort (function (a, b) {
+							return (new Date (a.pubDate) - new Date (b.pubDate)); //oldest first for rendering, parent before child
+							});
+						fedItems.forEach (function (item) {
+							const localParent = (item.inReplyToUrl !== undefined) ? itemsByGuid [item.inReplyToUrl] : undefined; //7/27/26 by CC -- federation: this peer post replies to one of OUR posts -> nest it under ours (the mirror of the local->federated direction)
+							if (localParent !== undefined) {
+								addItemToTimeline (item, localParent.divReplies);
+								}
+							else {
+								addItemToTimeline (item); //top-level federated card, inserted by time
+								reHomeLocalRepliesUnder (item);
+								}
+							});
+						});
 					}
 				globals.myRssNetwork.getRecentItems (options.ctRecentItems, function (err, theItems) {
 					if (err) {
@@ -1759,15 +1832,11 @@ function chatUserInterface (userOptions) { //5/2/26 by Claude + DW -- classic th
 						if (callback !== undefined) {
 							callback ();
 							}
+						loadFederated (); //7/27/26 by CC -- federation: local failed, but peers may still have something to show
 						return;
 						}
-					globals.myRssNetwork.getFederatedTimeline (function (fedErr, fedItems) { //7/26/26 by CC -- federation: the server returns posts from the instances it federates with, sanitized and tagged with origin; empty for a stock instance, and a down instance is never fatal
-						var allItems = theItems.slice ();
-						if (!fedErr && (fedItems !== undefined)) {
-							allItems = allItems.concat (fedItems);
-							}
-						renderAll (allItems);
-						});
+					renderAll (theItems); //7/27/26 by CC -- federation: render the local timeline right away and never wait on peers -- a black-hole peer can't blank it
+					loadFederated (); //7/27/26 by CC -- federation: then merge the peers in as they arrive
 					});
 				}
 

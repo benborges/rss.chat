@@ -556,6 +556,20 @@
 			.divChat .divThread:hover {
 				background: #fafafa;
 				}
+			.divChat .divThread.federatedCard { /* 7/27/26 by CC -- federation: a post from another instance reads as a quiet card set off by a left accent, so it's clearly not one of your own */
+				background: #fbfcfd;
+				border-left: 3px solid #d7dee6;
+				}
+			.divChat .divThread.federatedCard:hover {
+				background: #f6f8fa;
+				}
+			.divChat .spanFederatedFrom { /* the instance a federated post came from -- a quiet link home, the same gray as the time beside it */
+				color: #8899a6;
+				text-decoration: none;
+				}
+			.divChat .spanFederatedFrom:hover {
+				text-decoration: underline;
+				}
 			.divChat .divThread.flSelected > .divTweet {
 				background: whitesmoke;
 				}
