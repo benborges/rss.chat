@@ -68,6 +68,7 @@ function chatUserInterface (userOptions) { //5/2/26 by Claude + DW -- classic th
 			const itemsByGuid = {}; //look up displayed item by guid for updateItem
 			const federatedByGuid = {}; //7/26/26 by CC -- federation: a displayed federated card by its (remote) guid, so a local reply pointing at that guid can nest under it
 			const remoteAuthorCache = {}; //7/27/26 by CC -- federation: remote author names already resolved by url, so a page of replies to the same post makes one round-trip, not one each
+			const remoteAuthorPending = {}; //7/27/26 by CC -- federation: url -> the divReplyingTo lines waiting on an in-flight fetch, so twenty synchronous replies to one parent share a single call instead of firing twenty at once
 			var savedTimelineScroll = 0; //6/20/26 by Claude -- where the timeline was scrolled when we left it for a story, restored on the way back
 			var hoistStack = new Array (); //6/27/26 by CC -- #104 hoist/dehoist (MORE/Drummer lineage): ids of the posts hoisted into, outermost first; the last is the current temporary root. Empty == not hoisted, normal timeline showing
 			var hoistScrollStack = new Array (); //6/27/26 by CC -- #104: parallel to hoistStack -- the window scroll position of the view you left when you hoisted, restored when you dehoist back to it
@@ -1270,14 +1271,26 @@ function chatUserInterface (userOptions) { //5/2/26 by Claude + DW -- classic th
 					const divReplyingTo = $('<div class="divReplyingTo"></div>').text (replyingToText);
 					if (parentRemoteUrl !== undefined) { //7/26/26 by CC -- federation: the parent lives on another instance
 						if (flResolveRemoteAuthor) { //follow the url to name the author, threadwalker-style, and fill the line in when it comes back
-							if (remoteAuthorCache [parentRemoteUrl] !== undefined) { //7/27/26 by CC -- federation: many replies on a page share one parent; resolve each url only once
+							if (remoteAuthorCache [parentRemoteUrl] !== undefined) { //already resolved -- use it
 								divReplyingTo.text ("Replying to @" + remoteAuthorCache [parentRemoteUrl] + " on " + getDomainFromUrl (parentRemoteUrl));
 							}
+							else if (remoteAuthorPending [parentRemoteUrl] !== undefined) { //7/27/26 by CC -- federation: a fetch for this parent is already in flight; wait on it instead of firing another
+								remoteAuthorPending [parentRemoteUrl].push (divReplyingTo);
+							}
 							else {
+								remoteAuthorPending [parentRemoteUrl] = new Array ();
+								remoteAuthorPending [parentRemoteUrl].push (divReplyingTo);
 								globals.myRssNetwork.getRemoteItem (parentRemoteUrl, function (err, parentItem) {
+									const theWaiting = remoteAuthorPending [parentRemoteUrl];
+									delete remoteAuthorPending [parentRemoteUrl];
 									if ((parentItem !== undefined) && (parentItem.author !== undefined)) {
 										remoteAuthorCache [parentRemoteUrl] = parentItem.author;
-										divReplyingTo.text ("Replying to @" + parentItem.author + " on " + getDomainFromUrl (parentRemoteUrl));
+										const theText = "Replying to @" + parentItem.author + " on " + getDomainFromUrl (parentRemoteUrl);
+										if (theWaiting !== undefined) {
+											theWaiting.forEach (function (theDiv) {
+												theDiv.text (theText);
+											});
+										}
 									}
 								});
 							}
@@ -1801,7 +1814,7 @@ function chatUserInterface (userOptions) { //5/2/26 by Claude + DW -- classic th
 							}
 						});
 					}
-				function loadFederated () { //7/27/26 by CC -- federation: fetch the peers AFTER the local timeline is on screen, so a slow peer can never blank it; merge each in by time, nesting replies whichever way they cross the boundary
+				function loadFederated () { //7/27/26 by CC -- federation: fetch the peers AFTER the local timeline is on screen, so a slow peer can never blank it; merge each in by time, nesting replies whichever way they cross the boundary. Deliberately does NOT re-run selectNewestItem: the cursor was placed on the newest local post at load and shouldn't jump when async peer content lands underneath it -- a considered divergence from #133's "cursor on the top post" for the federated case.
 					globals.myRssNetwork.getFederatedTimeline (function (fedErr, fedItems) {
 						if (fedErr || (fedItems === undefined)) {
 							return;

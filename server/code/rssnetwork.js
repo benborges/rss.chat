@@ -761,7 +761,7 @@ var config = {
 			if (baseUrl.charAt (baseUrl.length - 1) !== "/") {
 				baseUrl += "/";
 				}
-			request ({url: baseUrl + "getrecentitems?ct=" + maxCt, timeout: 5000}, function (err, response, body) { //7/27/26 by CC -- federation: a peer that accepts the connection but never answers must not hang the whole call; 5 seconds then move on
+			request ({url: baseUrl + "getrecentitems?ct=" + maxCt, timeout: 5000, followRedirect: false}, function (err, response, body) { //7/27/26 by CC -- federation: a peer that accepts the connection but never answers must not hang the whole call; 5 seconds then move on. followRedirect off (7/27/26) so a peer can't 302 us onto an internal host the origin gate never sees
 				if (!err && (response !== undefined) && (response.statusCode === 200)) {
 					try {
 						JSON.parse (body).forEach (function (item) {
@@ -817,7 +817,7 @@ var config = {
 			getItemById (undefined, id, callback);
 			return;
 			}
-		request ({url: baseUrl + "getitembyguid?guid=" + encodeURIComponent (guid), timeout: 5000}, function (err, response, body) { //7/27/26 by CC -- federation: bounded, same as the timeline fetch
+		request ({url: baseUrl + "getitembyguid?guid=" + encodeURIComponent (guid), timeout: 5000, followRedirect: false}, function (err, response, body) { //7/27/26 by CC -- federation: bounded, same as the timeline fetch, and no redirects -- the origin gate above only vetted the url we chose, not wherever a hostile peer might bounce us
 			if (!err && (response !== undefined) && (response.statusCode === 200)) {
 				try {
 					const item = JSON.parse (body);
